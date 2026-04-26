@@ -9,7 +9,7 @@
     "email": "paffcio@users.noreply.github.com",
     "url": "https://github.com/paffcio"
   },
-  "homepage": "https://github.com/paffcio/neonpulse-player",
+  "homepage": "https://github.com/paffciostudio/neonpulse-player",
   "main": "electron-main.js",
   "private": true,
   "scripts": {

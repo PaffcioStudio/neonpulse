@@ -911,7 +911,7 @@ app.post('/api/covers/fetch/:id', async (req, res) => {
     const mbUrl = `https://musicbrainz.org/ws/2/recording/?query=recording:${title}+AND+artist:${artist}&fmt=json&limit=3`;
     const https = require('https');
     const fetchJson = (url) => new Promise((resolve, reject) => {
-      const req = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffcio/neonpulse)' } }, (r) => {
+      const req = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (r) => {
         let data = '';
         r.on('data', c => data += c);
         r.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
@@ -920,7 +920,7 @@ app.post('/api/covers/fetch/:id', async (req, res) => {
       req.setTimeout(8000, () => { req.destroy(); reject(new Error('timeout')); });
     });
     const fetchBinary = (url) => new Promise((resolve, reject) => {
-      const req = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffcio/neonpulse)' } }, (r) => {
+      const req = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (r) => {
         if (r.statusCode === 302 || r.statusCode === 301) {
           fetchBinary(r.headers.location).then(resolve).catch(reject); return;
         }

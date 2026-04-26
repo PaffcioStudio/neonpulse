@@ -381,7 +381,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
               <p>NeonPulse Player jest oprogramowaniem stworzonym z pasji do muzyki i programowania.</p>
               <p>Projekt rozwijany jako open-source. Wszelkie prawa zastrzeżone © Paffcio 2026.</p>
               <div className="flex gap-2 mt-3">
-                <a href="https://github.com/paffcio/neonpulse" target="_blank" rel="noreferrer"
+                <a href="https://github.com/paffciostudio/neonpulse" target="_blank" rel="noreferrer"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors">
                   <Github size={12} /> GitHub
                 </a>

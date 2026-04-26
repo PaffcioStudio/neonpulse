@@ -6,8 +6,8 @@
 
 **Lokalny odtwarzacz audio dla Linuksa z duszą**
 
-[![Version](https://img.shields.io/badge/wersja-3.4.0-a855f7?style=flat-square)](https://github.com/paffcio/neonpulse/releases)
-[![Platform](https://img.shields.io/badge/platforma-Linux-blue?style=flat-square&logo=linux)](https://github.com/paffcio/neonpulse)
+[![Version](https://img.shields.io/badge/wersja-3.4.0-a855f7?style=flat-square)](https://github.com/paffciostudio/neonpulse/releases)
+[![Platform](https://img.shields.io/badge/platforma-Linux-blue?style=flat-square&logo=linux)](https://github.com/paffciostudio/neonpulse)
 [![Electron](https://img.shields.io/badge/Electron-28-47848f?style=flat-square&logo=electron)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)](https://reactjs.org)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003b57?style=flat-square&logo=sqlite)](https://sqlite.org)
@@ -109,7 +109,7 @@
 ### Uruchomienie w trybie deweloperskim
 
 ```bash
-git clone https://github.com/paffcio/neonpulse.git
+git clone https://github.com/paffciostudio/neonpulse.git
 cd neonpulse
 npm install
 npm start
