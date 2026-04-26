@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="resources/icons/neonpulse-player.png" width="120" alt="NeonPulse Player" />
+
 # NEONPULSE PLAYER
 
 **Lokalny odtwarzacz audio dla Linuksa z duszą**
@@ -179,3 +183,5 @@ MIT © [Paffcio](https://github.com/paffcio) 2026
 <div align="center">
 
 Zbudowane z ❤️ i muzyką w tle
+
+</div>

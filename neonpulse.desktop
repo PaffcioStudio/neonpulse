@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=NeonPulse Player
+GenericName=Music Player
+Comment=Lokalny odtwarzacz muzyki z MPRIS i smart playlistami
+Exec=/usr/local/bin/neonpulse %U
+Icon=neonpulse-player
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;player;audio;mp3;flac;
+StartupWMClass=neonpulse-player
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/wav;audio/aac;

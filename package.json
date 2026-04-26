@@ -1,0 +1,133 @@
+{
+  "name": "neonpulse-player",
+  "version": "3.4.0",
+  "productName": "NeonPulse",
+  "desktopName": "pl.paffcio.neonpulse.desktop",
+  "description": "NeonPulse – lokalny odtwarzacz audio z SQLite, smart playlistami i integracją z Linux",
+  "author": {
+    "name": "Paffcio",
+    "email": "paffcio@users.noreply.github.com",
+    "url": "https://github.com/paffcio"
+  },
+  "homepage": "https://github.com/paffcio/neonpulse-player",
+  "main": "electron-main.js",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "server": "node server.js",
+    "start": "concurrently -k \"vite\" \"wait-on tcp:5173 && ELECTRON_NO_SANDBOX=1 LIBVA_DRIVER_NAME=dummy electron . --no-sandbox --disable-gpu-sandbox --ozone-platform=wayland --enable-features=WaylandWindowDecorations --disable-gpu --disable-software-rasterizer\"",
+    "build": "vite build",
+    "dist": "npm run build && electron-builder --linux",
+    "install-deb": "node scripts/install-deb.js",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "node-id3": "^0.2.6",
+    "better-sqlite3": "^9.4.3",
+    "body-parser": "^1.20.2",
+    "chokidar": "^3.5.3",
+    "cors": "^2.8.6",
+    "express": "^4.18.2",
+    "lucide-react": "^0.263.1",
+    "mpris-service": "^2.1.2",
+    "music-metadata": "^7.13.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.4.14",
+    "concurrently": "^9.2.1",
+    "electron": "^28.3.3",
+    "electron-builder": "^26.8.1",
+    "postcss": "^8.4.27",
+    "tailwindcss": "^3.3.3",
+    "vite": "^4.4.0",
+    "wait-on": "^7.0.1"
+  },
+  "build": {
+    "appId": "pl.paffcio.neonpulse",
+    "productName": "NeonPulse",
+    "copyright": "Copyright © 2025 Paffcio",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**",
+      "node_modules/mpris-service/**",
+      "node_modules/abstract-socket/**",
+      "node_modules/bindings/**",
+      "node_modules/file-uri-to-path/**"
+    ],
+    "files": [
+      "dist/**/*",
+      "server.js",
+      "electron-main.js",
+      "package.json",
+      "build/icons/**",
+      "node_modules/**"
+    ],
+    "directories": {
+      "buildResources": "resources",
+      "output": "release"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "maintainer": "Paffcio <paffcio@users.noreply.github.com>",
+      "vendor": "Paffcio",
+      "category": "AudioVideo",
+      "icon": "resources/icons",
+      "executableName": "neonpulse-player",
+      "desktop": {
+        "entry": {
+          "Name": "NeonPulse Player",
+          "GenericName": "Music Player",
+          "Comment": "Lokalny odtwarzacz muzyki z MPRIS i smart playlistami",
+          "Icon": "neonpulse-player",
+          "StartupWMClass": "neonpulse-player",
+          "MimeType": "audio/mpeg;audio/flac;audio/ogg;audio/wav;audio/aac;"
+        }
+      },
+      "executableArgs": [
+        "--no-sandbox",
+        "--disable-gpu-sandbox",
+        "--ozone-platform=wayland",
+        "--enable-features=WaylandWindowDecorations",
+        "--disable-gpu",
+        "--disable-software-rasterizer"
+      ]
+    },
+    "deb": {
+      "packageName": "neonpulse-player",
+      "afterInstall": "scripts/after-install.sh",
+      "fpm": [
+        "--after-upgrade=scripts/after-install.sh",
+        "--maintainer=Paffcio <paffcio@users.noreply.github.com>",
+        "--description=NeonPulse Player - lokalny odtwarzacz muzyki z MPRIS i smart playlistami",
+        "resources/linux/metainfo/pl.paffcio.neonpulse.metainfo.xml=/usr/share/metainfo/pl.paffcio.neonpulse.metainfo.xml"
+      ],
+      "artifactName": "neonpulse-player_${version}_${arch}.deb"
+    },
+    "artifactName": "NeonPulse-${version}-${arch}.${ext}",
+    "appImage": {
+      "artifactName": "NeonPulse-${version}.AppImage"
+    },
+    "extraResources": [
+      {
+        "from": "resources/icons",
+        "to": "icons"
+      }
+    ]
+  }
+}

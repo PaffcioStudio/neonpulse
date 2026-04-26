@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS THEME VARIABLES ─────────────────────────────────── */
+:root {
+  --accent-from: #d946ef;
+  --accent-to:   #6366f1;
+  --accent-mid:  #a855f7;
+  --accent-glow: rgba(217, 70, 239, 0.35);
+  --accent-bg:   rgba(217, 70, 239, 0.12);
+  --accent-border: rgba(217, 70, 239, 0.5);
+}
+
+/* Predefiniowane motywy */
+[data-theme="fuchsia"] { --accent-from:#d946ef; --accent-to:#6366f1; --accent-mid:#a855f7; --accent-glow:rgba(217,70,239,.35); --accent-bg:rgba(217,70,239,.12); --accent-border:rgba(217,70,239,.5); }
+[data-theme="cyan"]    { --accent-from:#06b6d4; --accent-to:#3b82f6; --accent-mid:#0ea5e9; --accent-glow:rgba(6,182,212,.35);  --accent-bg:rgba(6,182,212,.12);  --accent-border:rgba(6,182,212,.5); }
+[data-theme="green"]   { --accent-from:#22c55e; --accent-to:#10b981; --accent-mid:#16a34a; --accent-glow:rgba(34,197,94,.35);  --accent-bg:rgba(34,197,94,.12);  --accent-border:rgba(34,197,94,.5); }
+[data-theme="orange"]  { --accent-from:#f97316; --accent-to:#f59e0b; --accent-mid:#ea580c; --accent-glow:rgba(249,115,22,.35); --accent-bg:rgba(249,115,22,.12); --accent-border:rgba(249,115,22,.5); }
+[data-theme="rose"]    { --accent-from:#f43f5e; --accent-to:#ec4899; --accent-mid:#e11d48; --accent-glow:rgba(244,63,94,.35);  --accent-bg:rgba(244,63,94,.12);  --accent-border:rgba(244,63,94,.5); }
+
+/* ─── ACCENT UTILITY CLASSES ──────────────────────────────── */
+.accent-gradient { background: linear-gradient(135deg, var(--accent-from), var(--accent-to)); }
+.accent-gradient-text {
+  background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.accent-glow-bg  { box-shadow: 0 0 30px var(--accent-glow); }
+.accent-border   { border-color: var(--accent-border) !important; }
+.accent-text     { color: var(--accent-mid); }
+.accent-bg       { background: var(--accent-bg); }
+.accent-sidebar-indicator { border-left-color: var(--accent-from) !important; }
+
+/* Playbar progress gradient */
+.accent-progress { background: linear-gradient(90deg, var(--accent-from), var(--accent-to)); }
+
+/* Focus ring */
+input:focus, button:focus-visible { outline: 1.5px solid var(--accent-mid); outline-offset: 2px; }
+
+/* ─── ALBUM COLOR AMBIENT ─────────────────────────────────── */
+.album-ambient {
+  --album-color: #1a1a2e;
+  transition: background 1.2s ease;
+}
+.album-ambient::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 60% 60% at 30% 40%, var(--album-color, transparent) 0%, transparent 70%);
+  opacity: 0.18;
+  pointer-events: none;
+  z-index: 0;
+  transition: background 1.2s ease, opacity 0.8s ease;
+}
+
+/* ─── MISC ────────────────────────────────────────────────── */
+body {
+  background-color: #000;
+  color: white;
+  margin: 0; padding: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+#root { width: 100vw; height: 100vh; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 5px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--accent-from); }
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  background: white; border-radius: 50%; cursor: pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track { border-radius: 4px; }
+
+/* Selection */
+::selection { background: var(--accent-from); color: white; }
+
+/* Smooth view transition */
+.view-enter  { opacity: 0; transform: translateY(6px); }
+.view-active { opacity: 1; transform: translateY(0); transition: opacity 150ms ease, transform 150ms ease; }

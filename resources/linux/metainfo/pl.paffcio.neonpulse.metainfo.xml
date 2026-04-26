@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>pl.paffcio.neonpulse</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>NeonPulse Player</name>
+  <summary>Lokalny odtwarzacz muzyki z klimatem neonów</summary>
+  <developer_name>Paffcio</developer_name>
+  <description>
+    <p>NeonPulse to nowoczesny, lekki odtwarzacz audio stworzony dla fanów estetyki i szybkości. Obsługuje SQLite, smart playlisty i integrację z systemem Linux przez MPRIS.</p>
+  </description>
+  <launchable type="desktop-id">pl.paffcio.neonpulse.desktop</launchable>
+  <icon type="stock">neonpulse-player</icon>
+  <url type="homepage">https://github.com/paffcio/neonpulse-player</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="3.4.0" date="2025-01-01"/>
+  </releases>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+  <keywords>
+    <keyword>music</keyword>
+    <keyword>player</keyword>
+    <keyword>audio</keyword>
+    <keyword>mp3</keyword>
+    <keyword>flac</keyword>
+  </keywords>
+</component>
