@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Play, Search, Heart, Disc, Music2, Mic2, Sparkles, Shuffle, ListOrdered, Tag, ListPlus } from 'lucide-react';
+import { Play, Search, Heart, Disc, Music2, Mic2, Sparkles, Shuffle, ListOrdered, Tag, ListPlus, Moon } from 'lucide-react';
 
 import Sidebar          from './Sidebar';
 import PlayerBar        from './PlayerBar';
@@ -18,6 +18,8 @@ import TagEditorModal   from './TagEditorModal';
 import ImportExportModal from './ImportExportModal';
 import QueuePanel       from './QueuePanel';
 import HeartButton      from './HeartButton';
+import NowPlayingView   from './views/NowPlayingView';
+import SleepTimerModal  from './SleepTimerModal';
 import { usePlayer, REPEAT_MODES } from '../hooks/usePlayer';
 import { useLastFm } from '../hooks/useLastFm';
 import MiniPlayer from './MiniPlayer';
@@ -59,7 +61,10 @@ export default function MusicPlayer() {
   const [toasts, setToasts] = useState([]);
   const [isSidebarOpen,   setSidebarOpen]   = useState(true);
   const [isMiniPlayer,    setIsMiniPlayer]  = useState(false);
+  const [isNowPlaying,    setIsNowPlaying]  = useState(false);
   const [isQueueOpen,     setIsQueueOpen]   = useState(false);
+  const [showSleepTimer,  setShowSleepTimer] = useState(false);
+  const [sleepSeconds,    setSleepSeconds]   = useState(0); // 0 = nieaktywny
   const [searchQuery,     setSearchQuery]   = useState('');
   const [scanInfo,        setScanInfo]      = useState({ isScanning:false, count:0 });
   const [ctxMenu,         setCtxMenu]       = useState({ visible:false, x:0, y:0, song:null });
@@ -86,6 +91,10 @@ export default function MusicPlayer() {
   const [newSmartYearTo,   setNewSmartYearTo]   = useState('');
   const [newSmartFavOnly,  setNewSmartFavOnly]  = useState(false);
   const [newSmartGenre,    setNewSmartGenre]    = useState('');
+  const [newSmartArtist,   setNewSmartArtist]   = useState('');
+  const [newSmartLimit,    setNewSmartLimit]    = useState('');
+  const [newSmartSortBy,   setNewSmartSortBy]   = useState('');
+  const [newSmartSortDir,  setNewSmartSortDir]  = useState('asc');
 
   // Settings
   const [settings, setSettings] = useState(() => {
@@ -116,6 +125,22 @@ export default function MusicPlayer() {
     applyTheme(settings.theme || 'fuchsia');
   }, [settings.theme]);
 
+  // ─── Sleep Timer ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!sleepSeconds || sleepSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setSleepSeconds(prev => {
+        if (prev <= 1) {
+          player.setIsPlaying(false);
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [sleepSeconds > 0]);
+
   // ─── Wyślij ustawienia systemowe do electron przy starcie ───
   useEffect(() => {
     ipcRenderer.send('app:settings', {
@@ -143,7 +168,7 @@ export default function MusicPlayer() {
       const savedPos  = JSON.parse(localStorage.getItem('neonpulse_last_pos') || '0');
       const wasPlaying = JSON.parse(localStorage.getItem('neonpulse_was_playing') || 'false');
 
-      if (!savedIds || savedIds.length === 0) return;
+      if (!Array.isArray(savedIds) || savedIds.length === 0) return;
 
       // Zmapuj ID-ki na obiekty z biblioteki
       const songs = savedIds.map(id => library.find(s => s.id === id)).filter(Boolean);
@@ -721,7 +746,7 @@ export default function MusicPlayer() {
         break;
       case 'fetch-cover':
         (async () => {
-          showToast('Szukam okładki w MusicBrainz…', 'info');
+          showToast('Szukam okładki w MusicBrainz i iTunes…', 'info');
           try {
             const r = await fetch(`${API_URL}/covers/fetch/${song.id}`, { method: 'POST' });
             const data = await r.json();
@@ -734,7 +759,7 @@ export default function MusicPlayer() {
               showToast(data.reason || 'Nie znaleziono okładki', 'warn');
             }
           } catch {
-            showToast('Błąd połączenia z MusicBrainz', 'error');
+            showToast('Błąd połączenia podczas pobierania okładki', 'error');
           }
         })();
         break;
@@ -759,11 +784,17 @@ export default function MusicPlayer() {
       yearFrom: newSmartYearFrom ? Number(newSmartYearFrom) : undefined,
       yearTo:   newSmartYearTo   ? Number(newSmartYearTo)   : undefined,
       genreIncludes: newSmartGenre ? newSmartGenre.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean) : [],
+      artistIncludes: newSmartArtist.trim() || undefined,
+      limit:   newSmartLimit   ? Number(newSmartLimit)  : undefined,
+      sortBy:  newSmartSortBy  || undefined,
+      sortDir: newSmartSortDir || 'asc',
     };
     const id = `user-${Date.now()}`;
     setSmartPlaylists(prev => [...prev, { id, name:newSmartName.trim(), description:'Twoja smart playlista.', rules }]);
     setActiveSmartId(id);
-    setNewSmartName(''); setNewSmartYearFrom(''); setNewSmartYearTo(''); setNewSmartFavOnly(false); setNewSmartGenre('');
+    setNewSmartName(''); setNewSmartYearFrom(''); setNewSmartYearTo('');
+    setNewSmartFavOnly(false); setNewSmartGenre('');
+    setNewSmartArtist(''); setNewSmartLimit(''); setNewSmartSortBy(''); setNewSmartSortDir('asc');
     setActiveViewRaw('smart');
   };
 
@@ -964,13 +995,43 @@ export default function MusicPlayer() {
                   <form onSubmit={handleCreateSmart} className="flex-1 bg-zinc-900/60 border border-zinc-800/60 rounded-xl p-4">
                     <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 mb-3"><Mic2 size={12} className="accent-text"/>Nowa smart playlista</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {[['Nazwa',newSmartName,setNewSmartName,'text','Nocny chill…'],['Gatunki',newSmartGenre,setNewSmartGenre,'text','techno, ambient…'],['Rok od',newSmartYearFrom,setNewSmartYearFrom,'number','1990'],['Rok do',newSmartYearTo,setNewSmartYearTo,'number','2010']].map(([lbl,val,set,type,ph]) => (
+                      {[
+                        ['Nazwa',    newSmartName,    setNewSmartName,    'text',   'Nocny chill…'],
+                        ['Artysta',  newSmartArtist,  setNewSmartArtist,  'text',   'np. Daft Punk'],
+                        ['Gatunki',  newSmartGenre,   setNewSmartGenre,   'text',   'techno, ambient…'],
+                        ['Rok od',   newSmartYearFrom,setNewSmartYearFrom,'number', '1990'],
+                        ['Rok do',   newSmartYearTo,  setNewSmartYearTo,  'number', '2010'],
+                        ['Limit',    newSmartLimit,   setNewSmartLimit,   'number', 'np. 50'],
+                      ].map(([lbl,val,set,type,ph]) => (
                         <div key={lbl}>
                           <label className="text-[10px] text-zinc-600 uppercase tracking-wide">{lbl}</label>
                           <input type={type} value={val} onChange={e=>set(e.target.value)} placeholder={ph}
                             className="w-full mt-1 bg-black/40 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none text-white placeholder-zinc-700" />
                         </div>
                       ))}
+                      <div className="col-span-full grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-zinc-600 uppercase tracking-wide">Sortuj po</label>
+                          <select value={newSmartSortBy} onChange={e=>setNewSmartSortBy(e.target.value)}
+                            className="w-full mt-1 bg-black/40 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+                            <option value="">Domyślnie</option>
+                            <option value="title">Tytuł</option>
+                            <option value="artist">Artysta</option>
+                            <option value="album">Album</option>
+                            <option value="year">Rok</option>
+                            <option value="duration">Czas</option>
+                            <option value="random">Losowo</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-zinc-600 uppercase tracking-wide">Kierunek</label>
+                          <select value={newSmartSortDir} onChange={e=>setNewSmartSortDir(e.target.value)}
+                            className="w-full mt-1 bg-black/40 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
+                            <option value="asc">Rosnąco</option>
+                            <option value="desc">Malejąco</option>
+                          </select>
+                        </div>
+                      </div>
                       <div className="flex items-center gap-2 col-span-full">
                         <input id="sf" type="checkbox" checked={newSmartFavOnly} onChange={e=>setNewSmartFavOnly(e.target.checked)} className="w-3.5 h-3.5" />
                         <label htmlFor="sf" className="text-xs text-zinc-500">Tylko ulubione</label>
@@ -1130,6 +1191,43 @@ export default function MusicPlayer() {
             onAction={action => handleCtxAction(action, ctxMenu.song)} />
         )}
 
+        {/* Now Playing – pełnoekranowy widok */}
+        {isNowPlaying && (
+          <NowPlayingView
+            currentSong={player.currentSong}
+            isPlaying={player.isPlaying}
+            progress={player.progress}
+            volume={player.volume}
+            isMuted={player.isMuted}
+            repeatMode={player.repeatMode}
+            isShuffle={player.isShuffle}
+            queue={player.queue}
+            handlePlayPause={player.handlePlayPause}
+            handleNext={player.handleNext}
+            handlePrev={player.handlePrev}
+            seekTo={player.seekTo}
+            setVolume={player.setVolume}
+            setIsMuted={player.setIsMuted}
+            setIsShuffle={player.setIsShuffle}
+            cycleRepeat={player.cycleRepeat}
+            onToggleFavorite={toggleFavorite}
+            displayList={displayList}
+            onClose={() => setIsNowPlaying(false)}
+            onSleepTimer={() => setShowSleepTimer(true)}
+            sleepRemaining={sleepSeconds}
+            audioRef={player.audioRef}
+          />
+        )}
+
+        {/* Sleep Timer */}
+        {showSleepTimer && (
+          <SleepTimerModal
+            currentTimer={sleepSeconds}
+            onSet={secs => setSleepSeconds(secs || 0)}
+            onClose={() => setShowSleepTimer(false)}
+          />
+        )}
+
         {/* Edytor tagów */}
         {tagEditorSong && (
           <TagEditorModal
@@ -1218,7 +1316,9 @@ export default function MusicPlayer() {
           onToggleFavorite={toggleFavorite}
           onShowQueue={() => setIsQueueOpen(p => !p)} isQueueOpen={isQueueOpen}
           onGoHome={() => setActiveView('home')} displayList={displayList}
-          settings={settings} onMiniPlayer={() => setIsMiniPlayer(true)}
+          settings={settings} onMiniPlayer={() => setIsMiniPlayer(p => !p)} isMiniPlayer={isMiniPlayer}
+          onNowPlaying={() => setIsNowPlaying(p => !p)} isNowPlaying={isNowPlaying}
+          onSleepTimer={() => setShowSleepTimer(true)} sleepRemaining={sleepSeconds}
         />
       </main>
 

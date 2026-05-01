@@ -69,6 +69,10 @@ export function usePlayer(settings, onError) {
   useEffect(() => { queueRef.current    = queue;      }, [queue]);
   useEffect(() => { queueIndexRef.current = queueIndex; }, [queueIndex]);
 
+  // Refy do handleNext/handlePrev – zawsze aktualna wersja bez stałego dependency
+  const handleNextRef = useRef(null);
+  const handlePrevRef = useRef(null);
+
   // ─── DefaultShuffle przy starcie ─────────────────────────────
   useEffect(() => {
     if (settings?.defaultShuffle) setIsShuffle(true);
@@ -370,14 +374,14 @@ export function usePlayer(settings, onError) {
         case 'play':      setIsPlaying(true);    break;
         case 'pause':     setIsPlaying(false);   break;
         case 'playpause': setIsPlaying(p => !p); break;
-        case 'next':      handleNext();           break;
-        case 'previous':  handlePrev();           break;
+        case 'next':      handleNextRef.current?.();  break;
+        case 'previous':  handlePrevRef.current?.();  break;
       }
     };
     ipcRenderer.on('player:command', handler);
     return () => ipcRenderer.removeListener('player:command', handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue, queueIndex]);
+  }, []);
 
   // ─── IPC: głośność z tray ────────────────────────────────────
   useEffect(() => {
@@ -477,6 +481,10 @@ export function usePlayer(settings, onError) {
     const prev = (idx - 1 + q.length) % q.length;
     setQueueIndex(prev); setCurrentSong(q[prev]); setIsPlaying(true);
   }, []);
+
+  // Aktualizuj refy po każdej zmianie (żeby IPC handler zawsze miał aktualną wersję)
+  useEffect(() => { handleNextRef.current = handleNext; }, [handleNext]);
+  useEffect(() => { handlePrevRef.current = handlePrev; }, [handlePrev]);
 
   const removeFromQueue = useCallback((removeIdx) => {
     setQueue(prev => {

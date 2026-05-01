@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Repeat1, Shuffle,
-         Volume2, VolumeX, ListOrdered, Minimize2 } from 'lucide-react';
+         Volume2, VolumeX, ListOrdered, Minimize2, Maximize2, Moon } from 'lucide-react';
 import { formatTime, formatTimeRemaining, getCoverSrc, COVER_PLACEHOLDER } from '../utils';
 import { REPEAT_MODES } from '../hooks/usePlayer';
 import HeartButton from './HeartButton';
@@ -10,7 +10,8 @@ export default function PlayerBar({
   queue, setIsMuted, setVolume, setIsShuffle, cycleRepeat,
   handlePlayPause, handleNext, handlePrev, seekTo, handleVolumeScroll,
   onToggleFavorite, onShowQueue, isQueueOpen, onGoHome, displayList,
-  settings, onMiniPlayer,
+  settings, onMiniPlayer, isMiniPlayer,
+  onNowPlaying, isNowPlaying, onSleepTimer, sleepRemaining,
 }) {
   const [showRemaining, setShowRemaining] = useState(false);
   const volumeWrapRef = useRef(null);
@@ -135,10 +136,43 @@ export default function PlayerBar({
         </button>
         <button
           onClick={onMiniPlayer}
-          title="Mini Player"
-          className="hidden md:flex p-2 rounded-full text-zinc-500 hover:text-white border border-zinc-700 hover:border-zinc-500 transition-colors"
+          title={isMiniPlayer ? 'Zamknij Mini Player' : 'Mini Player'}
+          className={`hidden md:flex p-2 rounded-full border transition-colors ${
+            isMiniPlayer
+              ? 'accent-border accent-text accent-bg'
+              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
+          }`}
         >
           <Minimize2 size={12} />
+        </button>
+
+        <button
+          onClick={onNowPlaying}
+          title={isNowPlaying ? 'Zamknij Now Playing' : 'Now Playing'}
+          className={`hidden md:flex p-2 rounded-full border transition-colors ${
+            isNowPlaying
+              ? 'accent-border accent-text accent-bg'
+              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
+          }`}
+        >
+          <Maximize2 size={12} />
+        </button>
+
+        <button
+          onClick={onSleepTimer}
+          title={sleepRemaining > 0 ? `Sleep Timer: ${Math.ceil(sleepRemaining / 60)} min` : 'Sleep Timer'}
+          className={`hidden md:flex p-2 rounded-full border transition-colors relative ${
+            sleepRemaining > 0
+              ? 'border-indigo-500/50 text-indigo-400 bg-indigo-500/10'
+              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
+          }`}
+        >
+          <Moon size={12} />
+          {sleepRemaining > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-indigo-500 text-white rounded-full px-1 font-bold leading-tight">
+              {Math.ceil(sleepRemaining / 60)}
+            </span>
+          )}
         </button>
 
         <div ref={volumeWrapRef} className="flex items-center gap-2">

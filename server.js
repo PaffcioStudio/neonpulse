@@ -283,6 +283,7 @@ async function scanPaths(paths) {
     }
   }
 
+  reloadFavSet();
   const count = db.prepare('SELECT COUNT(*) as n FROM songs').get().n;
   sseEmit('scan_done', { count });
   sseEmit('status', { isScanning: false, count, scanned: count, total: allFiles.length });
@@ -408,6 +409,63 @@ app.post('/api/favorite', (req, res) => {
   }
   sseEmit('favorite_changed', { id, isFavorite });
   res.json({ id, isFavorite });
+});
+
+// GET /api/tags/lookup/:id  – wyszukaj metadane online (MusicBrainz + iTunes), bez zapisu
+app.get('/api/tags/lookup/:id', async (req, res) => {
+  const song = db.prepare('SELECT * FROM songs WHERE id = ?').get(req.params.id);
+  if (!song) return res.status(404).json({ error: 'Brak utworu' });
+
+  const https = require('https');
+  const fetchJson = (url) => new Promise((resolve, reject) => {
+    const r = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (res2) => {
+      if (res2.statusCode === 301 || res2.statusCode === 302) { fetchJson(res2.headers.location).then(resolve).catch(reject); return; }
+      let data = '';
+      res2.on('data', c => data += c);
+      res2.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
+    });
+    r.on('error', reject);
+    r.setTimeout(8000, () => { r.destroy(); reject(new Error('timeout')); });
+  });
+
+  const results = [];
+
+  // 1. MusicBrainz – recording po tytule+artyście
+  try {
+    const q = encodeURIComponent(`${song.title || ''} ${song.artist || ''}`);
+    const mb = await fetchJson(`https://musicbrainz.org/ws/2/recording/?query=${q}&fmt=json&limit=5`);
+    for (const rec of (mb.recordings || []).filter(r => r.score >= 50).slice(0, 5)) {
+      const release = rec.releases?.[0];
+      results.push({
+        source: 'MusicBrainz',
+        title:  rec.title || '',
+        artist: rec['artist-credit']?.[0]?.artist?.name || '',
+        album:  release?.title || '',
+        year:   release?.date?.slice(0, 4) || '',
+        genre:  rec.tags?.[0]?.name || '',
+        mbid:   rec.id,
+      });
+    }
+  } catch { /* niedostępny */ }
+
+  // 2. iTunes – fallback, dobre dane dla popularnych artystów
+  try {
+    const q = encodeURIComponent(`${song.artist || ''} ${song.title || ''}`);
+    const it = await fetchJson(`https://itunes.apple.com/search?term=${q}&media=music&entity=song&limit=5`);
+    for (const r of (it.results || []).slice(0, 5)) {
+      results.push({
+        source: 'iTunes',
+        title:  r.trackName || '',
+        artist: r.artistName || '',
+        album:  r.collectionName || '',
+        year:   r.releaseDate?.slice(0, 4) || '',
+        genre:  r.primaryGenreName || '',
+      });
+    }
+  } catch { /* niedostępny */ }
+
+  if (!results.length) return res.json({ ok: false, reason: 'Brak wyników' });
+  res.json({ ok: true, results });
 });
 
 // PUT /api/tags/:id  – edycja tagów ID3 + aktualizacja SQLite
@@ -615,12 +673,16 @@ app.get('/api/stats/summary', (_req, res) => {
 // ── Last.fm Scrobbling ───────────────────────────────────────────────────────
 
 function lastfmSign(params, secret) {
-  const str = Object.keys(params).sort().map(k => k + params[k]).join('') + secret;
+  // 'format' i 'callback' są wykluczone z podpisu wg Last.fm API
+  const filtered = Object.fromEntries(Object.entries(params).filter(([k]) => k !== 'format' && k !== 'callback'));
+  const str = Object.keys(filtered).sort().map(k => k + filtered[k]).join('') + secret;
   return crypto.createHash('md5').update(str, 'utf8').digest('hex');
 }
 
 async function lastfmCall(params, secret) {
-  const signed = { ...params, api_sig: lastfmSign(params, secret) };
+  // format=json dodajemy PO obliczeniu podpisu (nie wchodzi do api_sig)
+  const { format: _fmt, ...signParams } = params;
+  const signed = { ...signParams, api_sig: lastfmSign(signParams, secret), format: 'json' };
   const body = new URLSearchParams(signed).toString();
   const https = require('https');
   return new Promise((resolve, reject) => {
@@ -640,6 +702,31 @@ async function lastfmCall(params, secret) {
     req.end();
   });
 }
+
+// GET /api/lastfm/callback  – Last.fm redirect po autoryzacji
+app.get('/api/lastfm/callback', async (req, res) => {
+  const { token } = req.query;
+  if (!token) {
+    return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Brak tokenu Last.fm</h2><p>Spróbuj ponownie.</p></body></html>');
+  }
+  const cfg = JSON.parse(db.prepare("SELECT value FROM settings WHERE key='lastfm'").get()?.value || 'null');
+  if (!cfg?.apiKey || !cfg?.apiSecret) {
+    return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>Brak konfiguracji Last.fm</h2><p>Najpierw zapisz API Key i API Secret w ustawieniach NeonPulse.</p></body></html>');
+  }
+  try {
+    const data = await lastfmCall({ method: 'auth.getSession', api_key: cfg.apiKey, token, format: 'json' }, cfg.apiSecret);
+    if (data.session) {
+      const newCfg = { ...cfg, sessionKey: data.session.key, username: data.session.name };
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('lastfm', ?)").run(JSON.stringify(newCfg));
+      sseEmit('lastfm_connected', { username: data.session.name });
+      return res.send(`<html><head><style>body{font-family:sans-serif;text-align:center;padding:60px;background:#111;color:#eee}h2{color:#d63f3f}p{color:#aaa}</style></head><body><h2>✓ Połączono z Last.fm</h2><p>Zalogowano jako <strong>${data.session.name}</strong>.</p><p>Możesz zamknąć tę zakładkę i wrócić do NeonPulse.</p><script>setTimeout(()=>window.close(),3000)</script></body></html>`);
+    } else {
+      return res.status(400).send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#111;color:#eee"><h2>Błąd Last.fm</h2><p>${data.message || 'Nie udało się uzyskać sesji'}</p></body></html>`);
+    }
+  } catch (e) {
+    return res.status(500).send(`<html><body style="font-family:sans-serif;text-align:center;padding:60px;background:#111;color:#eee"><h2>Błąd połączenia</h2><p>${e.message}</p></body></html>`);
+  }
+});
 
 // POST /api/lastfm/auth  – utwórz sesję przez token
 app.post('/api/lastfm/auth', async (req, res) => {
@@ -728,13 +815,16 @@ app.delete('/api/lastfm/config', (_req, res) => {
 
 // GET /api/update/check  – sprawdź czy jest nowa wersja na GitHub
 app.get('/api/update/check', async (req, res) => {
+  const pkg = require('./package.json');
+  const current = pkg.version;
   try {
-    const pkg = require('./package.json');
     const https = require('https');
+    // Używamy /releases/tags/release bo tag jest zawsze "release" (rolling)
+    // Wersja jest w polu "name" release'a, nie w tag_name
     const data = await new Promise((resolve, reject) => {
       const r = https.get(
-        'https://api.github.com/repos/paffcio/neonpulse/releases/latest',
-        { headers: { 'User-Agent': 'NeonPulsePlayer/3.4' } },
+        'https://api.github.com/repos/PaffcioStudio/neonpulse/releases/tags/release',
+        { headers: { 'User-Agent': `NeonPulsePlayer/${current}` } },
         resp => {
           let d = '';
           resp.on('data', c => d += c);
@@ -744,12 +834,27 @@ app.get('/api/update/check', async (req, res) => {
       r.on('error', reject);
       r.setTimeout(8000, () => { r.destroy(); reject(new Error('timeout')); });
     });
-    const latest = data.tag_name?.replace(/^v/, '') || null;
-    const current = pkg.version;
+
+    // Wersja jest w tytule release'a (np. "3.5.0" lub "v3.5.0")
+    const latest = (data.name || '').replace(/^v/, '').trim() || null;
     const hasUpdate = latest && latest !== current;
-    res.json({ current, latest: latest || current, hasUpdate, url: data.html_url || null });
+
+    // Stałe URL-e do pobrania (bez wersji w nazwie)
+    const BASE = 'https://github.com/PaffcioStudio/neonpulse/releases/download/release';
+    const downloads = {
+      appimage: `${BASE}/NeonPulse.AppImage`,
+      deb:      `${BASE}/neonpulse-player_amd64.deb`,
+    };
+
+    res.json({
+      current,
+      latest:    latest || current,
+      hasUpdate: !!hasUpdate,
+      pageUrl:   data.html_url || null,
+      downloads,
+    });
   } catch (e) {
-    res.json({ current: require('./package.json').version, latest: null, hasUpdate: false, error: e.message });
+    res.json({ current, latest: null, hasUpdate: false, error: e.message });
   }
 });
 
@@ -895,66 +1000,110 @@ app.delete('/api/duplicates', (req, res) => {
   res.json({ ok: true, removed });
 });
 
-// POST /api/covers/fetch/:id  – pobierz okładkę z MusicBrainz (fallback)
+// POST /api/covers/fetch/:id  – pobierz okładkę z MusicBrainz + fallback iTunes
 app.post('/api/covers/fetch/:id', async (req, res) => {
   const { id } = req.params;
   const song = db.prepare('SELECT * FROM songs WHERE id = ?').get(id);
   if (!song) return res.status(404).json({ error: 'Brak utworu' });
-  if (song.cover) return res.json({ ok: true, cover: song.cover, cached: true });
 
-  const artist = encodeURIComponent(song.artist || '');
-  const album  = encodeURIComponent(song.album  || '');
-  const title  = encodeURIComponent(song.title  || '');
+  const artist = song.artist || '';
+  const album  = song.album  || '';
+  const title  = song.title  || '';
 
-  try {
-    // 1. Szukaj nagrania w MusicBrainz
-    const mbUrl = `https://musicbrainz.org/ws/2/recording/?query=recording:${title}+AND+artist:${artist}&fmt=json&limit=3`;
-    const https = require('https');
-    const fetchJson = (url) => new Promise((resolve, reject) => {
-      const req = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (r) => {
-        let data = '';
-        r.on('data', c => data += c);
-        r.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
-      });
-      req.on('error', reject);
-      req.setTimeout(8000, () => { req.destroy(); reject(new Error('timeout')); });
-    });
-    const fetchBinary = (url) => new Promise((resolve, reject) => {
-      const req = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (r) => {
-        if (r.statusCode === 302 || r.statusCode === 301) {
-          fetchBinary(r.headers.location).then(resolve).catch(reject); return;
-        }
-        const chunks = [];
-        r.on('data', c => chunks.push(c));
-        r.on('end', () => resolve({ data: Buffer.concat(chunks), contentType: r.headers['content-type'] || 'image/jpeg' }));
-      });
-      req.on('error', reject);
-      req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
-    });
+  const https = require('https');
+  const http  = require('http');
 
-    // 2. Szukaj releasu po album+artist w CAA
-    let coverUrl = null;
-    try {
-      const caaSearch = `https://musicbrainz.org/ws/2/release/?query=release:${album}+AND+artist:${artist}&fmt=json&limit=5`;
-      const caaData = await fetchJson(caaSearch);
-      const releases = (caaData.releases || []).filter(r => r.score >= 70);
-      for (const release of releases) {
-        try {
-          const caa = await fetchJson(`https://coverartarchive.org/release/${release.id}`);
-          const front = (caa.images || []).find(i => i.front);
-          if (front) { coverUrl = front.image; break; }
-        } catch { /* brak okładki dla tego release */ }
+  const fetchJson = (url) => new Promise((resolve, reject) => {
+    const lib = url.startsWith('https') ? https : http;
+    const r2 = lib.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (r) => {
+      if (r.statusCode === 301 || r.statusCode === 302) {
+        fetchJson(r.headers.location).then(resolve).catch(reject); return;
       }
-    } catch { /* MusicBrainz niedostępny */ }
+      let data = '';
+      r.on('data', c => data += c);
+      r.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
+    });
+    r2.on('error', reject);
+    r2.setTimeout(8000, () => { r2.destroy(); reject(new Error('timeout')); });
+  });
 
-    if (!coverUrl) return res.json({ ok: false, reason: 'Nie znaleziono okładki' });
+  const fetchBinary = (url) => new Promise((resolve, reject) => {
+    const lib = url.startsWith('https') ? https : http;
+    const r2 = lib.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (r) => {
+      if (r.statusCode === 301 || r.statusCode === 302) {
+        fetchBinary(r.headers.location).then(resolve).catch(reject); return;
+      }
+      const chunks = [];
+      r.on('data', c => chunks.push(c));
+      r.on('end', () => resolve({ data: Buffer.concat(chunks), contentType: r.headers['content-type'] || 'image/jpeg' }));
+    });
+    r2.on('error', reject);
+    r2.setTimeout(12000, () => { r2.destroy(); reject(new Error('timeout')); });
+  });
 
-    const { data, contentType } = await fetchBinary(coverUrl);
-    const ext  = (contentType.split('/')[1] || 'jpg').replace('jpeg','jpg');
+  const saveCover = async (imageUrl) => {
+    const { data, contentType } = await fetchBinary(imageUrl);
+    if (data.length < 1000) throw new Error('Plik obrazu za mały');
+    const ext  = (contentType.split('/')[1] || 'jpg').replace('jpeg', 'jpg').split(';')[0];
     const hash = crypto.createHash('md5').update(data).digest('hex');
     const dest = path.join(COVERS_DIR, `${hash}.${ext}`);
     if (!fs.existsSync(dest)) fs.writeFileSync(dest, data);
-    const cover = `http://localhost:3001/covers/${hash}.${ext}`;
+    return `http://localhost:3001/covers/${hash}.${ext}`;
+  };
+
+  try {
+    let coverUrl = null;
+
+    // 1. MusicBrainz – szukaj po albumie+artyście
+    if (!coverUrl && album && artist) {
+      try {
+        const q = encodeURIComponent(`release:${album} AND artist:${artist}`);
+        const mbData = await fetchJson(`https://musicbrainz.org/ws/2/release/?query=${q}&fmt=json&limit=5`);
+        const releases = (mbData.releases || []).filter(r => r.score >= 60);
+        for (const release of releases) {
+          try {
+            const caa = await fetchJson(`https://coverartarchive.org/release/${release.id}`);
+            const front = (caa.images || []).find(i => i.front) || caa.images?.[0];
+            if (front?.image) { coverUrl = front.image; break; }
+          } catch { /* brak okładki dla tego release */ }
+        }
+      } catch { /* MusicBrainz niedostępny */ }
+    }
+
+    // 2. MusicBrainz – szukaj po tytule+artyście (dla singli)
+    if (!coverUrl && title && artist) {
+      try {
+        const q = encodeURIComponent(`recording:${title} AND artist:${artist}`);
+        const mbRec = await fetchJson(`https://musicbrainz.org/ws/2/recording/?query=${q}&fmt=json&limit=3`);
+        const recordings = (mbRec.recordings || []).filter(r => r.score >= 60);
+        for (const rec of recordings) {
+          for (const release of (rec.releases || []).slice(0, 3)) {
+            try {
+              const caa = await fetchJson(`https://coverartarchive.org/release/${release.id}`);
+              const front = (caa.images || []).find(i => i.front) || caa.images?.[0];
+              if (front?.image) { coverUrl = front.image; break; }
+            } catch { /* brak */ }
+          }
+          if (coverUrl) break;
+        }
+      } catch { /* MusicBrainz niedostępny */ }
+    }
+
+    // 3. Fallback – iTunes Search API
+    if (!coverUrl) {
+      try {
+        const q = encodeURIComponent(`${artist} ${album || title}`);
+        const itunes = await fetchJson(`https://itunes.apple.com/search?term=${q}&media=music&entity=album&limit=5`);
+        const result = (itunes.results || [])[0];
+        if (result?.artworkUrl100) {
+          coverUrl = result.artworkUrl100.replace('100x100bb', '600x600bb');
+        }
+      } catch { /* iTunes niedostępny */ }
+    }
+
+    if (!coverUrl) return res.json({ ok: false, reason: 'Nie znaleziono okładki w MusicBrainz ani iTunes' });
+
+    const cover = await saveCover(coverUrl);
     db.prepare('UPDATE songs SET cover=? WHERE id=?').run(cover, id);
     sseEmit('tags_updated', { id, song: db.prepare('SELECT * FROM songs WHERE id=?').get(id) });
     res.json({ ok: true, cover });

@@ -33,7 +33,7 @@ export function shuffleArray(arr) {
 
 // ─── Smart filtry ─────────────────────────────────────────────
 export function filterBySmartRules(list, rules) {
-  return list.filter(t => {
+  let result = list.filter(t => {
     if (!t) return false;
     if (rules.favoritesOnly && !t.isFavorite) return false;
     if (rules.yearFrom && t.year && Number(t.year) < Number(rules.yearFrom)) return false;
@@ -47,6 +47,26 @@ export function filterBySmartRules(list, rules) {
     if (rules.folderIncludes && !(t.path||'').toLowerCase().includes(rules.folderIncludes.toLowerCase()))   return false;
     return true;
   });
+
+  // Sortowanie
+  if (rules.sortBy) {
+    const dir = rules.sortDir === 'desc' ? -1 : 1;
+    result = [...result].sort((a, b) => {
+      if (rules.sortBy === 'random') return Math.random() - 0.5;
+      let va = a[rules.sortBy] ?? ''; let vb = b[rules.sortBy] ?? '';
+      if (rules.sortBy === 'duration' || rules.sortBy === 'year') {
+        return dir * ((Number(va)||0) - (Number(vb)||0));
+      }
+      return dir * String(va).toLowerCase().localeCompare(String(vb).toLowerCase(), 'pl');
+    });
+  }
+
+  // Limit
+  if (rules.limit && Number(rules.limit) > 0) {
+    result = result.slice(0, Number(rules.limit));
+  }
+
+  return result;
 }
 
 // ─── Odmiana ──────────────────────────────────────────────────

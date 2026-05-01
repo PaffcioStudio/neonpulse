@@ -1,6 +1,6 @@
 {
   "name": "neonpulse-player",
-  "version": "3.4.0",
+  "version": "3.5.0",
   "productName": "NeonPulse",
   "desktopName": "pl.paffcio.neonpulse.desktop",
   "description": "NeonPulse – lokalny odtwarzacz audio z SQLite, smart playlistami i integracją z Linux",
@@ -117,11 +117,11 @@
         "--description=NeonPulse Player - lokalny odtwarzacz muzyki z MPRIS i smart playlistami",
         "resources/linux/metainfo/pl.paffcio.neonpulse.metainfo.xml=/usr/share/metainfo/pl.paffcio.neonpulse.metainfo.xml"
       ],
-      "artifactName": "neonpulse-player_${version}_${arch}.deb"
+      "artifactName": "neonpulse-player_amd64.deb"
     },
-    "artifactName": "NeonPulse-${version}-${arch}.${ext}",
+    "artifactName": "NeonPulse-${arch}.${ext}",
     "appImage": {
-      "artifactName": "NeonPulse-${version}.AppImage"
+      "artifactName": "NeonPulse.AppImage"
     },
     "extraResources": [
       {

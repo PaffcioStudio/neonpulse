@@ -49,9 +49,9 @@ if (!fs.existsSync(PKG_PATH)) {
 const pkg = JSON.parse(fs.readFileSync(PKG_PATH, 'utf8'));
 const version = pkg.version;
 
-// artifact naming pattern z package.json: "neonpulse-player_${version}_${arch}.deb"
+// artifact naming: bez wersji w nazwie (stały URL dla update checka)
 const ARCH     = 'amd64';
-const DEB_NAME = `neonpulse-player_${version}_${ARCH}.deb`;
+const DEB_NAME = `neonpulse-player_${ARCH}.deb`;
 const DEB_PATH = path.join(RELEASE_DIR, DEB_NAME);
 
 console.log('');

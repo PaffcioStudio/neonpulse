@@ -1,7 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { FolderPlus, Trash2, RefreshCw, Monitor, Sliders, Music2, Database, Radio, ExternalLink, CheckCircle2, XCircle, Info, Github, Heart } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  FolderPlus, Trash2, RefreshCw, Monitor, Sliders, Music2,
+  Database, Radio, ExternalLink, CheckCircle2, XCircle, Info,
+  Github, Heart, AlertTriangle
+} from 'lucide-react';
 import { THEMES } from '../../utils';
 import EqualizerPanel from '../EqualizerPanel';
+import { ipcRenderer } from '../../ipc';
 
 const TABS = [
   { id: 'library',      label: 'Biblioteka',  icon: Database },
@@ -13,9 +18,11 @@ const TABS = [
 ];
 
 export default function SettingsView({ musicPaths, library, scanInfo, onAddFolder, onRemovePath, onRescan, settings, onSettingChange, setEqGain, eqFiltersRef, EQ_FREQS }) {
-  const [activeTab, setActiveTab] = useState('library');
+  const [activeTab, setActiveTab]   = useState('library');
+  const [visible,   setVisible]     = useState(true);
+  const [animDir,   setAnimDir]     = useState(1);
+  const animRef = useRef(null);
 
-  // Last.fm state
   const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 'http:') ? '/api' : 'http://localhost:3001/api';
   const [lfmConfig,   setLfmConfig]   = useState(null);
   const [lfmApiKey,   setLfmApiKey]   = useState('');
@@ -24,12 +31,36 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
   const [lfmMsg,      setLfmMsg]      = useState('');
   const [updateInfo,  setUpdateInfo]  = useState(null);
   const [checkingUpd, setCheckingUpd] = useState(false);
+  const [lfmToken,    setLfmToken]    = useState('');
 
   const loadLfmConfig = useCallback(async () => {
     try { const r = await fetch(`${API_URL}/lastfm/config`); if (r.ok) setLfmConfig(await r.json()); } catch {}
   }, [API_URL]);
 
   useEffect(() => { loadLfmConfig(); }, [loadLfmConfig]);
+
+  useEffect(() => {
+    const es = new EventSource(`${API_URL}/events`);
+    es.addEventListener('lastfm_connected', async (e) => {
+      await loadLfmConfig();
+      const d = JSON.parse(e.data);
+      setLfmMsg(`Zalogowano jako ${d.username} ✓`);
+    });
+    return () => es.close();
+  }, [API_URL, loadLfmConfig]);
+
+  const switchTab = (id) => {
+    if (id === activeTab) return;
+    const currentIdx = TABS.findIndex(t => t.id === activeTab);
+    const nextIdx    = TABS.findIndex(t => t.id === id);
+    setAnimDir(nextIdx > currentIdx ? 1 : -1);
+    setVisible(false);
+    clearTimeout(animRef.current);
+    animRef.current = setTimeout(() => {
+      setActiveTab(id);
+      setVisible(true);
+    }, 110);
+  };
 
   const saveLfmConfig = async () => {
     if (!lfmApiKey.trim() || !lfmSecret.trim()) { setLfmMsg('Uzupełnij oba pola'); return; }
@@ -43,12 +74,12 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
 
   const connectLastfm = () => {
     if (!lfmConfig?.apiKey) { setLfmMsg('Najpierw zapisz API Key'); return; }
-    const cb = encodeURIComponent('http://localhost:3001/api/lastfm/callback');
-    window.open(`https://www.last.fm/api/auth/?api_key=${lfmConfig.apiKey}&cb=${cb}`, '_blank');
-    setLfmMsg('Po autoryzacji wróć tutaj i kliknij "Weryfikuj token"');
+    const cb  = encodeURIComponent('http://localhost:3001/api/lastfm/callback');
+    const url = `https://www.last.fm/api/auth/?api_key=${lfmConfig.apiKey}&cb=${cb}`;
+    ipcRenderer.invoke('open-external', url);
+    setLfmMsg('Autoryzuj dostęp w przeglądarce — zakładka zamknie się automatycznie po zalogowaniu');
   };
 
-  const [lfmToken, setLfmToken] = useState('');
   const verifyToken = async () => {
     if (!lfmToken.trim()) { setLfmMsg('Wklej token z URL'); return; }
     setLfmSaving(true); setLfmMsg('');
@@ -71,31 +102,65 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
     finally { setCheckingUpd(false); }
   };
 
+  /* Logika zależności między opcjami */
+  const handleSettingChange = (id, val) => {
+    if (id === 'crossfade' && val && settings.gaplessPlayback)
+      onSettingChange('gaplessPlayback', false);
+    if (id === 'gaplessPlayback' && val && settings.crossfade)
+      onSettingChange('crossfade', false);
+    if (id === 'autoPlayLast' && !val && settings.continueOnStart)
+      onSettingChange('continueOnStart', false);
+    if (id === 'minimizeToTray' && !val) {
+      if (settings.startMinimized)   onSettingChange('startMinimized', false);
+      if (settings.showTrayControls) onSettingChange('showTrayControls', false);
+    }
+    onSettingChange(id, val);
+  };
+
+  const s = settings;
+
   return (
     <div className="p-8 max-w-3xl mx-auto">
       <h2 className="text-3xl font-black mb-6 tracking-tight">Ustawienia</h2>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-zinc-900/60 p-1 rounded-xl border border-zinc-800">
+      {/* ─── Tab bar ─── */}
+      <div className="relative flex gap-1 mb-6 bg-zinc-900/60 p-1 rounded-2xl border border-zinc-800/80">
+        {TABS.map(({ id }, i) => (
+          <div
+            key={id}
+            className="absolute inset-y-1 rounded-xl pointer-events-none transition-all duration-300 ease-out"
+            style={{
+              opacity:    activeTab === id ? 1 : 0,
+              left:       `calc(${i} * (100% / ${TABS.length}) + 4px)`,
+              width:      `calc(100% / ${TABS.length} - 8px)`,
+              background: 'linear-gradient(135deg, var(--accent-from), var(--accent-to))',
+              boxShadow:  activeTab === id ? '0 2px 14px var(--accent-glow)' : 'none',
+            }}
+          />
+        ))}
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
-            className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-              activeTab === id
-                ? 'text-white shadow-lg accent-gradient'
-                : 'text-zinc-400 hover:text-white hover:bg-white/5'
-            }`}
+            onClick={() => switchTab(id)}
+            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 px-2 rounded-xl text-xs font-semibold transition-colors duration-150
+              ${activeTab === id ? 'text-white' : 'text-zinc-500 hover:text-zinc-200'}`}
           >
-            <Icon size={14} />
-            <span className="hidden sm:inline">{label}</span>
+            <Icon size={13} className="flex-shrink-0" />
+            <span className="hidden sm:inline truncate">{label}</span>
           </button>
         ))}
       </div>
 
-      <div className="space-y-4">
+      {/* ─── Zawartość z animacją ─── */}
+      <div
+        className="space-y-4"
+        style={{
+          opacity:    visible ? 1 : 0,
+          transform:  visible ? 'translateX(0)' : `translateX(${animDir * 16}px)`,
+          transition: 'opacity 110ms ease-out, transform 110ms ease-out',
+        }}
+      >
 
-        {/* ── BIBLIOTEKA ── */}
         {activeTab === 'library' && (<>
           <Card title="Foldery muzyki" subtitle="NeonPulse skanuje te foldery i obserwuje nowe pliki w czasie rzeczywistym"
             action={
@@ -126,20 +191,17 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
               </div>
             )}
             <button onClick={onAddFolder}
-              className="w-full py-2.5 rounded-lg flex items-center justify-center gap-2 font-semibold transition-colors text-sm accent-gradient hover:opacity-90">
+              className="w-full py-2.5 rounded-xl flex items-center justify-center gap-2 font-semibold transition-all text-sm accent-gradient hover:opacity-90"
+              onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 18px var(--accent-glow)'}
+              onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+            >
               <FolderPlus size={16} /> Dodaj folder z muzyką
             </button>
           </Card>
-
           <Card title="Statystyki">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                ['Utwory', library.length],
-                ['Foldery', musicPaths.length],
-                ['Silnik', 'SQLite'],
-                ['Tryb', 'WAL'],
-              ].map(([label, val]) => (
-                <div key={label} className="bg-black/30 rounded-lg p-3 text-center">
+              {[['Utwory', library.length], ['Foldery', musicPaths.length], ['Silnik', 'SQLite'], ['Tryb', 'WAL']].map(([label, val]) => (
+                <div key={label} className="bg-black/30 rounded-xl p-3 text-center border border-zinc-800/40">
                   <p className="text-[10px] text-zinc-600 uppercase tracking-wide mb-1">{label}</p>
                   <p className="text-lg font-black accent-text">{val}</p>
                 </div>
@@ -148,70 +210,84 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
           </Card>
         </>)}
 
-        {/* ── ODTWARZACZ ── */}
         {activeTab === 'player' && (<>
-          <Card title="Zachowanie">
-            {[
-              { id:'autoPlayLast',    label:'Odtwarzaj ostatni utwór przy starcie',     desc:'Wznawia od miejsca gdzie skończyłeś' },
-              { id:'continueOnStart', label:'Wznów odtwarzanie po uruchomieniu',        desc:'Jeśli był aktywny, wznowi automatycznie' },
-              { id:'gaplessPlayback', label:'Odtwarzanie bez przerw (gapless)',         desc:'Minimalizuje ciszę między utworami' },
-              { id:'crossfade',       label:'Crossfade między utworami (2s)',           desc:'Płynne przejście – eksperymentalne' },
-              { id:'fadeInOnPlay',    label:'Fade-in przy starcie utworu (0.8s)',       desc:'Delikatne wejście głośności zamiast nagłego startu' },
-              { id:'replayGainEnabled', label:'ReplayGain – normalizacja głośności',   desc:'Wyrównuje głośność między utworami na podstawie tagów' },
-            ].map(({ id, label, desc }) => <Toggle key={id} label={label} desc={desc} value={settings[id]??false} onChange={v=>onSettingChange(id,v)} />)}
+          <Card title="Zachowanie odtwarzacza">
+            <Toggle label="Odtwarzaj ostatni utwór przy starcie" desc="Wznawia od miejsca gdzie skończyłeś"
+              value={s.autoPlayLast??false} onChange={v => handleSettingChange('autoPlayLast', v)} />
+            <Toggle label="Wznów odtwarzanie po uruchomieniu" desc="Jeśli był aktywny, wznowi automatycznie po starcie"
+              value={s.continueOnStart??false} onChange={v => handleSettingChange('continueOnStart', v)}
+              disabled={!s.autoPlayLast} disabledReason="Wymaga włączonej opcji 'Odtwarzaj ostatni utwór'" />
+            <Toggle label="Fade-in przy starcie utworu (0.8s)" desc="Delikatne wejście głośności zamiast nagłego startu"
+              value={s.fadeInOnPlay??false} onChange={v => handleSettingChange('fadeInOnPlay', v)} />
+            <Toggle label="ReplayGain – normalizacja głośności" desc="Wyrównuje głośność między utworami na podstawie tagów ID3"
+              value={s.replayGainEnabled??false} onChange={v => handleSettingChange('replayGainEnabled', v)} />
           </Card>
-          <Card title="Domyślne">
-            {[
-              { id:'defaultShuffle', label:'Domyślnie włącz shuffle', desc:'Shuffle aktywny po uruchomieniu' },
-              { id:'rememberVolume', label:'Zapamiętuj głośność',     desc:'Przywróć ostatnią głośność przy starcie' },
-              { id:'rememberQueue',  label:'Zapamiętuj kolejkę',      desc:'Przywróć kolejkę po restarcie' },
-            ].map(({ id, label, desc }) => <Toggle key={id} label={label} desc={desc} value={settings[id]??false} onChange={v=>onSettingChange(id,v)} />)}
+
+          <Card title="Przejścia między utworami" subtitle="Gapless i Crossfade wzajemnie się wykluczają – aktywuj tylko jedno">
+            <Toggle label="Odtwarzanie bez przerw (Gapless)" desc="Minimalizuje ciszę między kolejnymi utworami"
+              value={s.gaplessPlayback??false} onChange={v => handleSettingChange('gaplessPlayback', v)} />
+            <Toggle label="Crossfade między utworami (2s)" desc="Płynne nakładanie się końca i początku – eksperymentalne"
+              value={s.crossfade??false} onChange={v => handleSettingChange('crossfade', v)} />
+            {s.gaplessPlayback && s.crossfade && (
+              <Warn>Gapless i Crossfade są jednocześnie aktywne – może to powodować konflikty audio. Zostaw tylko jedną opcję włączoną.</Warn>
+            )}
           </Card>
-          {setEqGain && (
-            <EqualizerPanel setEqGain={setEqGain} eqFiltersRef={eqFiltersRef} EQ_FREQS={EQ_FREQS} />
-          )}
+
+          <Card title="Domyślne ustawienia">
+            {[
+              { id:'defaultShuffle', label:'Domyślnie włącz shuffle',  desc:'Shuffle aktywny po uruchomieniu aplikacji' },
+              { id:'rememberVolume', label:'Zapamiętuj głośność',      desc:'Przywróć ostatnią głośność przy starcie' },
+              { id:'rememberQueue',  label:'Zapamiętuj kolejkę',       desc:'Przywróć kolejkę odtwarzania po restarcie' },
+            ].map(({ id, label, desc }) => (
+              <Toggle key={id} label={label} desc={desc} value={s[id]??false} onChange={v => handleSettingChange(id, v)} />
+            ))}
+          </Card>
+
+          {setEqGain && <EqualizerPanel setEqGain={setEqGain} eqFiltersRef={eqFiltersRef} EQ_FREQS={EQ_FREQS} />}
         </>)}
 
-        {/* ── OGÓLNE ── */}
         {activeTab === 'general' && (<>
-          <Card title="Ikona systemowa (Tray)">
-            {[
-              { id:'minimizeToTray',   label:'Minimalizuj do traya przy zamknięciu', desc:'Zamiast zamykać, ukryj w zasobniku systemowym' },
-              { id:'startMinimized',   label:'Uruchom zminimalizowany',              desc:'Aplikacja startuje w tle bez okna' },
-              { id:'showTrayControls', label:'Pokaż Play/Pause/Next w menu traya',  desc:'Dodatkowe kontrolki w kontekstowym menu traya' },
-            ].map(({ id, label, desc }) => <Toggle key={id} label={label} desc={desc} value={settings[id]??true} onChange={v=>onSettingChange(id,v)} />)}
+          <Card title="Ikona systemowa (Tray)" subtitle="Zarządzaj zachowaniem aplikacji w zasobniku systemowym">
+            <Toggle label="Minimalizuj do traya przy zamknięciu" desc="Zamiast zamykać, ukryj aplikację w zasobniku systemowym"
+              value={s.minimizeToTray??true} onChange={v => handleSettingChange('minimizeToTray', v)} />
+            <Toggle label="Uruchom zminimalizowany" desc="Aplikacja startuje w tle, bez widocznego okna"
+              value={s.startMinimized??false} onChange={v => handleSettingChange('startMinimized', v)}
+              disabled={!s.minimizeToTray} disabledReason="Wymaga włączonej opcji 'Minimalizuj do traya'" />
+            <Toggle label="Pokaż Play / Pause / Next w menu traya" desc="Kontrolki odtwarzania w kontekstowym menu traya"
+              value={s.showTrayControls??true} onChange={v => handleSettingChange('showTrayControls', v)}
+              disabled={!s.minimizeToTray} disabledReason="Wymaga włączonej opcji 'Minimalizuj do traya'" />
           </Card>
+
           <Card title="System i integracje">
-            {[
-              { id:'mprisEnabled',  label:'Integracja MPRIS (Linux)',  desc:'Kontrola z klawiszy multimedialnych i panelu systemu' },
-              { id:'hardwareAccel', label:'Akceleracja sprzętowa',     desc:'Lepsza wydajność renderowania – wymaga restartu' },
-            ].map(({ id, label, desc }) => <Toggle key={id} label={label} desc={desc} value={settings[id]??true} onChange={v=>onSettingChange(id,v)} />)}
+            <Toggle label="Integracja MPRIS (Linux)" desc="Kontrola z klawiszy multimedialnych, panelu systemowego i KDE Connect"
+              value={s.mprisEnabled??true} onChange={v => handleSettingChange('mprisEnabled', v)} />
+            <Toggle label="Akceleracja sprzętowa GPU" desc="Lepsza wydajność renderowania interfejsu – wymaga restartu"
+              value={s.hardwareAccel??true} onChange={v => handleSettingChange('hardwareAccel', v)} />
           </Card>
         </>)}
 
-        {/* ── WYGLĄD ── */}
         {activeTab === 'appearance' && (<>
-          <Card title="Motyw kolorystyczny" subtitle="Zmienia kolor akcentu w całym interfejsie – od razu">
+          <Card title="Motyw kolorystyczny" subtitle="Zmienia kolor akcentu w całym interfejsie – natychmiast">
             <div className="grid grid-cols-5 gap-3">
               {THEMES.map(t => {
-                const active = (settings.theme || 'fuchsia') === t.id;
+                const active = (s.theme || 'fuchsia') === t.id;
                 return (
-                  <button key={t.id} onClick={() => onSettingChange('theme', t.id)}
-                    title={t.label}
-                    className={`relative aspect-square rounded-xl border-2 transition-all overflow-hidden group ${
-                      active ? 'border-white shadow-lg scale-[1.04]' : 'border-transparent hover:border-zinc-500 hover:scale-[1.02]'
+                  <button key={t.id} onClick={() => handleSettingChange('theme', t.id)} title={t.label}
+                    className={`relative aspect-square rounded-xl border-2 transition-all duration-200 overflow-hidden group ${
+                      active ? 'border-white scale-[1.06]' : 'border-transparent hover:border-zinc-500 hover:scale-[1.03]'
                     }`}
-                    style={{ background: `linear-gradient(135deg, ${t.from}, ${t.to})` }}
+                    style={{
+                      background: `linear-gradient(135deg, ${t.from}, ${t.to})`,
+                      boxShadow: active ? `0 4px 20px ${t.from}55` : undefined,
+                    }}
                   >
-                    {/* Aktywny – checkmark */}
                     {active && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/25">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                           <path d="M4 10l4 4 8-8" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
                     )}
-                    {/* Nazwa na hover */}
                     <div className="absolute bottom-0 left-0 right-0 py-1 bg-black/40 text-white text-[10px] font-medium text-center opacity-0 group-hover:opacity-100 transition-opacity">
                       {t.label}
                     </div>
@@ -222,17 +298,19 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
           </Card>
 
           <Card title="Interfejs">
-            {[
-              { id:'animationsEnabled', label:'Animacje przejść',                desc:'Płynne przejścia przy zmianie zakładek' },
-              { id:'showVisualizer',    label:'Wizualizator audio',               desc:'Słupki częstotliwości na ekranie głównym' },
-              { id:'compactMode',       label:'Tryb kompaktowy',                  desc:'Mniejsze wiersze na listach – więcej utworów widocznych naraz' },
-              { id:'showAlbumColors',   label:'Kolor ambientu z okładki albumu',  desc:'Subtelne tło dopasowane do koloru aktualnie grającej okładki' },
-            ].map(({ id, label, desc }) => <Toggle key={id} label={label} desc={desc} value={settings[id]??true} onChange={v=>onSettingChange(id,v)} />)}
+            <Toggle label="Animacje przejść" desc="Płynne slide'y przy zmianie zakładek i widoków"
+              value={s.animationsEnabled??true} onChange={v => handleSettingChange('animationsEnabled', v)} />
+            <Toggle label="Wizualizator audio" desc="Słupki częstotliwości na ekranie głównym (Web Audio API)"
+              value={s.showVisualizer??true} onChange={v => handleSettingChange('showVisualizer', v)} />
+            <Toggle label="Tryb kompaktowy" desc="Mniejsze wiersze na listach – więcej utworów widocznych naraz"
+              value={s.compactMode??false} onChange={v => handleSettingChange('compactMode', v)} />
+            <Toggle label="Kolor ambientu z okładki albumu" desc="Subtelne tło dopasowane kolorystycznie do aktualnie grającej okładki"
+              value={s.showAlbumColors??true} onChange={v => handleSettingChange('showAlbumColors', v)} />
           </Card>
         </>)}
 
         {activeTab === 'integrations' && (<>
-          <Card title="Last.fm – Scrobbling" subtitle="Automatyczne zapisywanie słuchanych utworów do Twojego profilu Last.fm">
+          <Card title="Last.fm – Scrobbling" subtitle="Automatyczne zapisywanie słuchanych utworów do profilu Last.fm">
             {lfmConfig?.hasSession ? (
               <div className="py-2">
                 <div className="flex items-center gap-2 mb-3">
@@ -247,7 +325,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
               <div className="space-y-3 py-2">
                 <p className="text-xs text-zinc-500">
                   Potrzebujesz darmowego konta na{' '}
-                  <a href="https://www.last.fm/api/account/create" target="_blank" rel="noreferrer" className="accent-text hover:underline inline-flex items-center gap-0.5">last.fm <ExternalLink size={10} /></a>
+                  <a onClick={() => ipcRenderer.invoke('open-external', 'https://www.last.fm/api/account/create')} className="accent-text hover:underline inline-flex items-center gap-0.5 cursor-pointer">last.fm <ExternalLink size={10} /></a>
                   {' '}i własnego API Key.
                 </p>
                 <div className="grid grid-cols-1 gap-2">
@@ -294,7 +372,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
         </>)}
 
         {activeTab === 'about' && (<>
-          <div className="flex flex-col items-center text-center py-8 mb-6">
+          <div className="flex flex-col items-center text-center py-8 mb-2">
             <div className="w-24 h-24 rounded-3xl overflow-hidden mb-4 shadow-2xl border border-zinc-700/50">
               <img src="/icons/neonpulse-player.png" onError={e => { e.target.style.display='none'; }} alt="NeonPulse" className="w-full h-full object-cover" />
             </div>
@@ -304,7 +382,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             <p className="text-zinc-500 text-sm mb-3">Audio Engine</p>
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-800 border border-zinc-700/50 text-xs text-zinc-400 mb-1">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
-              Wersja <strong className="text-white ml-1">3.4.0</strong>
+              Wersja <strong className="text-white ml-1">3.5.0</strong>
             </div>
             <p className="text-xs text-zinc-600 mt-2">Produkcja 2026</p>
           </div>
@@ -329,18 +407,32 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
               </button>
               {updateInfo && (
                 <div className={`flex items-start gap-2 p-3 rounded-xl border text-xs ${
-                  updateInfo.hasUpdate
-                    ? 'bg-green-950/40 border-green-800/50 text-green-300'
-                    : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400'
+                  updateInfo.hasUpdate ? 'bg-green-950/40 border-green-800/50 text-green-300' : 'bg-zinc-800/50 border-zinc-700/50 text-zinc-400'
                 }`}>
                   {updateInfo.hasUpdate
                     ? <><CheckCircle2 size={14} className="text-green-400 flex-shrink-0 mt-0.5" /><div>
                         <p className="font-medium">Dostępna wersja {updateInfo.latest}!</p>
                         <p className="text-zinc-400 mt-0.5">Aktualna: {updateInfo.current}</p>
-                        {updateInfo.url && <a href={updateInfo.url} target="_blank" rel="noreferrer"
-                          className="inline-flex items-center gap-1 mt-1 accent-text hover:underline">
-                          Pobierz <ExternalLink size={10} />
-                        </a>}
+                        <div className="flex gap-2 mt-2 flex-wrap">
+                          {updateInfo.downloads?.appimage && (
+                            <a onClick={() => ipcRenderer.invoke('open-external', updateInfo.downloads.appimage)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 cursor-pointer transition-colors">
+                              <ExternalLink size={10} /> AppImage
+                            </a>
+                          )}
+                          {updateInfo.downloads?.deb && (
+                            <a onClick={() => ipcRenderer.invoke('open-external', updateInfo.downloads.deb)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 cursor-pointer transition-colors">
+                              <ExternalLink size={10} /> .deb
+                            </a>
+                          )}
+                          {updateInfo.pageUrl && (
+                            <a onClick={() => ipcRenderer.invoke('open-external', updateInfo.pageUrl)}
+                              className="inline-flex items-center gap-1 accent-text hover:underline cursor-pointer">
+                              <ExternalLink size={10} /> GitHub Release
+                            </a>
+                          )}
+                        </div>
                       </div></>
                     : <><CheckCircle2 size={14} className="flex-shrink-0 mt-0.5" /><p>Masz najnowszą wersję ({updateInfo.current})</p></>
                   }
@@ -376,19 +468,20 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             </div>
           </Card>
 
-          <Card title="Licencja i informacje" subtitle="">
+          <Card title="Licencja i informacje">
             <div className="py-2 space-y-2 text-xs text-zinc-500">
               <p>NeonPulse Player jest oprogramowaniem stworzonym z pasji do muzyki i programowania.</p>
               <p>Projekt rozwijany jako open-source. Wszelkie prawa zastrzeżone © Paffcio 2026.</p>
               <div className="flex gap-2 mt-3">
-                <a href="https://github.com/paffciostudio/neonpulse" target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors">
+                <a onClick={() => ipcRenderer.invoke('open-external', 'https://github.com/paffciostudio/neonpulse')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer">
                   <Github size={12} /> GitHub
                 </a>
               </div>
             </div>
           </Card>
         </>)}
+
       </div>
     </div>
   );
@@ -396,7 +489,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
 
 function Card({ title, subtitle, action, children }) {
   return (
-    <div className="rounded-xl border border-zinc-800/60 overflow-hidden" style={{ background: 'linear-gradient(160deg, rgba(39,39,42,0.7) 0%, rgba(24,24,27,0.8) 100%)' }}>
+    <div className="rounded-2xl border border-zinc-800/60 overflow-hidden" style={{ background: 'linear-gradient(160deg, rgba(39,39,42,0.7) 0%, rgba(24,24,27,0.8) 100%)' }}>
       <div className="px-5 py-4 flex items-start justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.015)' }}>
         <div>
           <h3 className="font-semibold text-sm text-white tracking-tight">{title}</h3>
@@ -409,17 +502,38 @@ function Card({ title, subtitle, action, children }) {
   );
 }
 
-function Toggle({ label, desc, value, onChange }) {
+function Warn({ children }) {
   return (
-    <label className="flex items-center justify-between py-2.5 cursor-pointer group" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-      <div className="pr-4">
+    <div className="flex items-start gap-2 mt-2 mb-1 px-3 py-2.5 rounded-xl border text-xs"
+      style={{ background: 'rgba(245,158,11,0.07)', borderColor: 'rgba(245,158,11,0.25)', color: '#fbbf24' }}>
+      <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function Toggle({ label, desc, value, onChange, disabled = false, disabledReason }) {
+  return (
+    <label
+      className={`flex items-center justify-between py-2.5 group ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+      title={disabled && disabledReason ? disabledReason : undefined}
+    >
+      <div className="pr-4 min-w-0">
         <p className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors leading-snug">{label}</p>
         {desc && <p className="text-xs text-zinc-600 mt-0.5 leading-snug">{desc}</p>}
+        {disabled && disabledReason && (
+          <p className="text-[11px] mt-0.5 flex items-center gap-1" style={{ color: 'rgba(251,191,36,0.7)' }}>
+            <AlertTriangle size={10} className="flex-shrink-0" /> {disabledReason}
+          </p>
+        )}
       </div>
       <div
-        onClick={(e) => { e.preventDefault(); onChange(!value); }}
-        className={`relative w-10 h-5 rounded-full transition-all duration-200 flex-shrink-0 ${value ? 'accent-gradient' : 'bg-zinc-800 border border-zinc-700'}`}
-        style={value ? { boxShadow: '0 0 8px var(--accent-glow)' } : {}}
+        onClick={(e) => { e.preventDefault(); if (!disabled) onChange(!value); }}
+        className={`relative w-10 h-5 rounded-full transition-all duration-200 flex-shrink-0 ${
+          value && !disabled ? 'accent-gradient' : 'bg-zinc-800 border border-zinc-700'
+        }`}
+        style={value && !disabled ? { boxShadow: '0 0 8px var(--accent-glow)' } : {}}
       >
         <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-md transition-all duration-200 ${value ? 'left-[22px]' : 'left-0.5'}`} />
       </div>

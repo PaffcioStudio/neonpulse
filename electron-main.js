@@ -27,7 +27,7 @@ if (isWayland) {
   app.commandLine.appendSwitch('ozone-platform', 'x11');
 }
 
-const { BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, globalShortcut } = require('electron');
+const { BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, globalShortcut, shell } = require('electron');
 const path = require('path');
 const os   = require('os');
 
@@ -433,6 +433,10 @@ ipcMain.on('app:settings', (_, s) => {
 });
 
 ipcMain.handle('get-platform', () => ({ platform: process.platform, isWayland }));
+
+ipcMain.handle('open-external', (_, url) => {
+  shell.openExternal(url);
+});
 
 ipcMain.handle('select-folder', async () => {
   if (!mainWindow) return null;
