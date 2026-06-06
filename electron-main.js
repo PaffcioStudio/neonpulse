@@ -17,6 +17,9 @@ app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-gpu-sandbox');
 app.commandLine.appendSwitch('disable-dev-shm-usage');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// Wyłącz wbudowaną sesję multimediów Chromium, żeby KDE nie widziało drugiego,
+// pustego odtwarzacza obok naszego ręcznie kontrolowanego MPRIS.
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
 
 // Wayland
 const isWayland = !!(process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland');
@@ -30,6 +33,7 @@ if (isWayland) {
 const { BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, globalShortcut, shell } = require('electron');
 const path = require('path');
 const os   = require('os');
+const fs   = require('fs');
 
 // Ścieżka do katalogu okładek – identyczna logika jak w server.js
 // Potrzebna do konwersji http://localhost/covers/... → file:///...  dla MPRIS artUrl
@@ -138,12 +142,33 @@ let appSettings = {
   minimizeToTray: true,
   startMinimized: false,
   showTrayControls: true,
-  hardwareAccel: false,
+  mprisEnabled: true,
 };
+
+function appSettingsPath() {
+  return path.join(app.getPath('userData'), 'app-settings.json');
+}
+
+function loadAppSettings() {
+  try {
+    const raw = fs.readFileSync(appSettingsPath(), 'utf8');
+    appSettings = { ...appSettings, ...JSON.parse(raw) };
+  } catch {}
+}
+
+function saveAppSettings() {
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    fs.writeFileSync(appSettingsPath(), JSON.stringify(appSettings, null, 2));
+  } catch (e) {
+    console.warn('[SETTINGS] Nie zapisano app-settings:', e.message);
+  }
+}
 
 // ─── MPRIS ────────────────────────────────────────────────────
 async function tryInitMPRIS() {
   if (process.platform !== 'linux') return;
+  if (!appSettings.mprisEnabled) return;
 
   // Prawdziwe zamknięcie poprzedniej instancji:
   // _bus.disconnect() zamyka gniazdo Unix do D-Bus – nazwa jest zwalniana
@@ -239,6 +264,25 @@ function updateTrayMenu(showControls) {
   tray.setContextMenu(buildTrayMenu(showControls ?? true));
 }
 
+const mediaKeys = {
+  'MediaPlayPause':    'playpause',
+  'MediaNextTrack':    'next',
+  'MediaPreviousTrack':'previous',
+  'MediaStop':         'pause',
+};
+
+function registerMediaShortcuts() {
+  Object.entries(mediaKeys).forEach(([key, cmd]) => {
+    try { globalShortcut.register(key, () => sendCmd(cmd)); } catch {}
+  });
+}
+
+function unregisterMediaShortcuts() {
+  Object.keys(mediaKeys).forEach(key => {
+    try { globalShortcut.unregister(key); } catch {}
+  });
+}
+
 // ─── OKNO ─────────────────────────────────────────────────────
 function createWindow() {
   let windowIcon;
@@ -312,7 +356,7 @@ function createWindow() {
 
   // Fallback: jeśli ready-to-show nie odpali w 5s (bug Wayland), pokaż okno na siłę
   const showFallback = setTimeout(() => {
-    if (mainWindow && !mainWindow.isVisible()) {
+    if (mainWindow && !mainWindow.isVisible() && !appSettings.startMinimized) {
       console.warn('[WINDOW] Fallback show po 5s (ready-to-show nie odpalił).');
       mainWindow.show();
     }
@@ -346,6 +390,8 @@ function createWindow() {
     if (!app.isQuitting && appSettings.minimizeToTray) {
       e.preventDefault();
       mainWindow.hide();
+    } else {
+      mainWindow.webContents.send('app:before-quit');
     }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
@@ -429,13 +475,55 @@ ipcMain.on('player:update', (_, data) => {
 });
 
 ipcMain.on('app:settings', (_, s) => {
+  const prevMpris = appSettings.mprisEnabled;
   appSettings = { ...appSettings, ...s };
+  delete appSettings.startup;
+  saveAppSettings();
+  if (s.startup && appSettings.startMinimized && appSettings.minimizeToTray && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
+  if (prevMpris !== appSettings.mprisEnabled) {
+    if (!appSettings.mprisEnabled) {
+      mprisAvailable = false;
+      if (mprisPlayer) {
+        try { mprisPlayer._bus.disconnect(); } catch {}
+        mprisPlayer = null;
+      }
+      unregisterMediaShortcuts();
+    } else {
+      tryInitMPRIS();
+      registerMediaShortcuts();
+    }
+  }
 });
 
 ipcMain.handle('get-platform', () => ({ platform: process.platform, isWayland }));
 
+ipcMain.handle('get-app-icon', () => {
+  const path = require('path');
+  const fs   = require('fs');
+  // W środowisku packaged ikony są w resourcesPath/icons/
+  // W środowisku dev są w resources/icons/
+  const candidates = [
+    path.join(process.resourcesPath || '', 'icons', 'neonpulse-player.png'),
+    path.join(__dirname, 'resources', 'icons', 'neonpulse-player.png'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      const data = fs.readFileSync(p).toString('base64');
+      return `data:image/png;base64,${data}`;
+    }
+  }
+  return null;
+});
+
 ipcMain.handle('open-external', (_, url) => {
   shell.openExternal(url);
+});
+
+ipcMain.handle('open-path', (_, filePath) => {
+  // Pokaż plik w eksploratorze (Nautilus, Dolphin itp.)
+  shell.showItemInFolder(filePath);
 });
 
 ipcMain.handle('select-folder', async () => {
@@ -449,21 +537,14 @@ app.whenReady().then(async () => {
   console.log('[APP] Electron gotowy, uruchamiam...');
   console.log(`[APP] Wayland: ${isWayland}, packaged: ${app.isPackaged}`);
   console.log(`[APP] userData: ${app.getPath('userData')}`);
+  loadAppSettings();
   await startServer();
   createWindow();
   createTray();
   tryInitMPRIS();
 
   // Klawisze multimedialne - działają na Wayland i X11
-  const keys = {
-    'MediaPlayPause':    'playpause',
-    'MediaNextTrack':    'next',
-    'MediaPreviousTrack':'previous',
-    'MediaStop':         'pause',
-  };
-  Object.entries(keys).forEach(([key, cmd]) => {
-    try { globalShortcut.register(key, () => sendCmd(cmd)); } catch {}
-  });
+  if (appSettings.mprisEnabled) registerMediaShortcuts();
 
   // Ctrl+Shift+I – DevTools (zawsze dostępne, nie tylko w trybie dev)
   try {
@@ -492,4 +573,9 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed',  () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('before-quit',        () => { app.isQuitting = true; });
+app.on('before-quit',        () => {
+  app.isQuitting = true;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app:before-quit');
+  }
+});

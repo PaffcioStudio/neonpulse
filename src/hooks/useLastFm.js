@@ -11,7 +11,10 @@ const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 
 export function useLastFm(currentSong, isPlaying, progress) {
   const [config,     setConfig]     = useState(null); // { configured, username, hasSession }
   const [lastfmOn,   setLastfmOn]   = useState(() => {
-    try { return JSON.parse(localStorage.getItem('neonpulse_lastfm_enabled') || 'false'); } catch { return false; }
+    try {
+      const saved = localStorage.getItem('neonpulse_lastfm_enabled');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch { return true; }
   });
 
   const scrobbledRef  = useRef(null);  // id ostatnio scrobblowanego

@@ -1,15 +1,15 @@
 {
   "name": "neonpulse-player",
-  "version": "3.5.0",
+  "version": "3.6.0",
   "productName": "NeonPulse",
   "desktopName": "pl.paffcio.neonpulse.desktop",
   "description": "NeonPulse – lokalny odtwarzacz audio z SQLite, smart playlistami i integracją z Linux",
   "author": {
     "name": "Paffcio",
-    "email": "paffcio@users.noreply.github.com",
-    "url": "https://github.com/paffcio"
+    "email": "pawelpotrykus94@gmail.com",
+    "url": "https://github.com/PaffcioStudio"
   },
-  "homepage": "https://github.com/paffciostudio/neonpulse-player",
+  "homepage": "https://github.com/PaffcioStudio/neonpulse",
   "main": "electron-main.js",
   "private": true,
   "scripts": {
@@ -48,7 +48,7 @@
   "build": {
     "appId": "pl.paffcio.neonpulse",
     "productName": "NeonPulse",
-    "copyright": "Copyright © 2025 Paffcio",
+    "copyright": "Copyright © 2026 Paffcio",
     "asar": true,
     "asarUnpack": [
       "node_modules/better-sqlite3/**",
@@ -84,7 +84,7 @@
           ]
         }
       ],
-      "maintainer": "Paffcio <paffcio@users.noreply.github.com>",
+      "maintainer": "Paffcio <pawelpotrykus94@gmail.com>",
       "vendor": "Paffcio",
       "category": "AudioVideo",
       "icon": "resources/icons",
@@ -113,7 +113,7 @@
       "afterInstall": "scripts/after-install.sh",
       "fpm": [
         "--after-upgrade=scripts/after-install.sh",
-        "--maintainer=Paffcio <paffcio@users.noreply.github.com>",
+        "--maintainer=Paffcio <pawelpotrykus94@gmail.com>",
         "--description=NeonPulse Player - lokalny odtwarzacz muzyki z MPRIS i smart playlistami",
         "resources/linux/metainfo/pl.paffcio.neonpulse.metainfo.xml=/usr/share/metainfo/pl.paffcio.neonpulse.metainfo.xml"
       ],

@@ -35,6 +35,14 @@
 
 /* Playbar progress gradient */
 .accent-progress { background: linear-gradient(90deg, var(--accent-from), var(--accent-to)); }
+.progress-pulse {
+  box-shadow: 0 0 12px var(--accent-glow);
+  animation: progressPulse 1.4s ease-in-out infinite;
+}
+@keyframes progressPulse {
+  0%, 100% { filter: brightness(1); box-shadow: 0 0 8px var(--accent-glow); }
+  50% { filter: brightness(1.25); box-shadow: 0 0 18px var(--accent-glow); }
+}
 
 /* Focus ring */
 input:focus, button:focus-visible { outline: 1.5px solid var(--accent-mid); outline-offset: 2px; }
@@ -80,6 +88,45 @@ input[type="range"]::-webkit-slider-thumb {
   background: white; border-radius: 50%; cursor: pointer;
 }
 input[type="range"]::-webkit-slider-runnable-track { border-radius: 4px; }
+input.number-clean::-webkit-outer-spin-button,
+input.number-clean::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input.number-clean {
+  -moz-appearance: textfield;
+}
+
+.np-pop-enter { animation: npPopEnter 170ms ease-out both; }
+.np-pop-exit { animation: npPopExit 140ms ease-in both; }
+.np-slide-up-enter { animation: npSlideUpEnter 170ms ease-out both; }
+.np-slide-up-exit { animation: npSlideUpExit 140ms ease-in both; }
+.np-full-enter { animation: npFullEnter 190ms ease-out both; }
+.np-full-exit { animation: npFullExit 150ms ease-in both; }
+@keyframes npPopEnter {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes npPopExit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+@keyframes npSlideUpEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes npSlideUpExit {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(14px); }
+}
+@keyframes npFullEnter {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes npFullExit {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(18px); }
+}
 
 /* Selection */
 ::selection { background: var(--accent-from); color: white; }

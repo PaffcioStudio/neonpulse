@@ -17,13 +17,41 @@ const TABS = [
   { id: 'about',        label: 'Info',        icon: Info },
 ];
 
-export default function SettingsView({ musicPaths, library, scanInfo, onAddFolder, onRemovePath, onRescan, settings, onSettingChange, setEqGain, eqFiltersRef, EQ_FREQS }) {
+const VISUALIZER_MODES = [
+  { id: 'nebula', label: 'Mgławica', desc: 'Koło spektrum, fala i cząsteczki' },
+  { id: 'bars', label: 'Słupy', desc: 'Szerokie pasma reagujące na rytm' },
+  { id: 'tunnel', label: 'Tunel', desc: 'Geometryczne pierścienie basu' },
+  { id: 'aurora', label: 'Zorza', desc: 'Płynne fale średnich tonów' },
+];
+
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = n;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const decimals = unit <= 1 || value >= 100 ? 0 : 1;
+  return `${value.toFixed(decimals)} ${units[unit]}`;
+}
+
+export default function SettingsView({ musicPaths, library, scanInfo, onAddFolder, onRemovePath, onRescan, settings, onSettingChange, lastfm, setEqGain, eqFiltersRef, EQ_FREQS }) {
   const [activeTab, setActiveTab]   = useState('library');
   const [visible,   setVisible]     = useState(true);
   const [animDir,   setAnimDir]     = useState(1);
+  const [appVersion, setAppVersion] = useState('…');
+  const [appIcon,    setAppIcon]    = useState(null);
   const animRef = useRef(null);
 
   const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 'http:') ? '/api' : 'http://localhost:3001/api';
+
+  // Pobierz wersję dynamicznie z server.js który czyta package.json
+  useEffect(() => {
+    fetch(`${API_URL}/version`).then(r => r.json()).then(d => setAppVersion(d.version)).catch(() => {});
+    ipcRenderer.invoke('get-app-icon').then(src => { if (src) setAppIcon(src); }).catch(() => {});
+  }, []);
   const [lfmConfig,   setLfmConfig]   = useState(null);
   const [lfmApiKey,   setLfmApiKey]   = useState('');
   const [lfmSecret,   setLfmSecret]   = useState('');
@@ -36,6 +64,8 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
   const loadLfmConfig = useCallback(async () => {
     try { const r = await fetch(`${API_URL}/lastfm/config`); if (r.ok) setLfmConfig(await r.json()); } catch {}
   }, [API_URL]);
+  const lastfmLoadConfig = lastfm?.loadConfig;
+  const toggleLastfm = lastfm?.toggleLastfm;
 
   useEffect(() => { loadLfmConfig(); }, [loadLfmConfig]);
 
@@ -43,11 +73,13 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
     const es = new EventSource(`${API_URL}/events`);
     es.addEventListener('lastfm_connected', async (e) => {
       await loadLfmConfig();
+      await lastfmLoadConfig?.();
+      toggleLastfm?.(true);
       const d = JSON.parse(e.data);
       setLfmMsg(`Zalogowano jako ${d.username} ✓`);
     });
     return () => es.close();
-  }, [API_URL, loadLfmConfig]);
+  }, [API_URL, loadLfmConfig, lastfmLoadConfig, toggleLastfm]);
 
   const switchTab = (id) => {
     if (id === activeTab) return;
@@ -86,13 +118,21 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
     try {
       const r = await fetch(`${API_URL}/lastfm/auth`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: lfmToken.trim() }) });
       const d = await r.json();
-      if (d.ok) { setLfmMsg(`Zalogowano jako ${d.username} ✓`); await loadLfmConfig(); setLfmToken(''); }
+      if (d.ok) {
+        setLfmMsg(`Zalogowano jako ${d.username} ✓`);
+        await loadLfmConfig();
+        await lastfmLoadConfig?.();
+        toggleLastfm?.(true);
+        setLfmToken('');
+      }
       else setLfmMsg(d.error || 'Błąd weryfikacji');
     } catch { setLfmMsg('Błąd połączenia'); } finally { setLfmSaving(false); }
   };
 
   const disconnectLastfm = async () => {
     await fetch(`${API_URL}/lastfm/config`, { method: 'DELETE' });
+    toggleLastfm?.(false);
+    await lastfmLoadConfig?.();
     setLfmConfig(null); setLfmMsg('Wylogowano');
   };
 
@@ -108,8 +148,6 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
       onSettingChange('gaplessPlayback', false);
     if (id === 'gaplessPlayback' && val && settings.crossfade)
       onSettingChange('crossfade', false);
-    if (id === 'autoPlayLast' && !val && settings.continueOnStart)
-      onSettingChange('continueOnStart', false);
     if (id === 'minimizeToTray' && !val) {
       if (settings.startMinimized)   onSettingChange('startMinimized', false);
       if (settings.showTrayControls) onSettingChange('showTrayControls', false);
@@ -118,6 +156,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
   };
 
   const s = settings;
+  const librarySize = library.reduce((sum, song) => sum + (Number(song.filesize) || 0), 0);
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
@@ -179,7 +218,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
                 <p className="text-sm text-zinc-600">Brak folderów. Dodaj poniżej.</p>
               </div>
             ) : (
-              <div className="space-y-2 mb-4">
+              <div className="space-y-2 mb-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: '220px' }}>
                 {musicPaths.map(p => (
                   <div key={p} className="flex justify-between items-center bg-black/30 px-4 py-2.5 rounded-lg border border-zinc-800/60 group">
                     <span className="font-mono text-xs text-zinc-300 truncate">{p}</span>
@@ -200,7 +239,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
           </Card>
           <Card title="Statystyki">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[['Utwory', library.length], ['Foldery', musicPaths.length], ['Silnik', 'SQLite'], ['Tryb', 'WAL']].map(([label, val]) => (
+              {[['Utwory', library.length], ['Foldery', musicPaths.length], ['Rozmiar', formatBytes(librarySize)], ['Baza', 'SQLite']].map(([label, val]) => (
                 <div key={label} className="bg-black/30 rounded-xl p-3 text-center border border-zinc-800/40">
                   <p className="text-[10px] text-zinc-600 uppercase tracking-wide mb-1">{label}</p>
                   <p className="text-lg font-black accent-text">{val}</p>
@@ -214,9 +253,6 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
           <Card title="Zachowanie odtwarzacza">
             <Toggle label="Odtwarzaj ostatni utwór przy starcie" desc="Wznawia od miejsca gdzie skończyłeś"
               value={s.autoPlayLast??false} onChange={v => handleSettingChange('autoPlayLast', v)} />
-            <Toggle label="Wznów odtwarzanie po uruchomieniu" desc="Jeśli był aktywny, wznowi automatycznie po starcie"
-              value={s.continueOnStart??false} onChange={v => handleSettingChange('continueOnStart', v)}
-              disabled={!s.autoPlayLast} disabledReason="Wymaga włączonej opcji 'Odtwarzaj ostatni utwór'" />
             <Toggle label="Fade-in przy starcie utworu (0.8s)" desc="Delikatne wejście głośności zamiast nagłego startu"
               value={s.fadeInOnPlay??false} onChange={v => handleSettingChange('fadeInOnPlay', v)} />
             <Toggle label="ReplayGain – normalizacja głośności" desc="Wyrównuje głośność między utworami na podstawie tagów ID3"
@@ -261,8 +297,6 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
           <Card title="System i integracje">
             <Toggle label="Integracja MPRIS (Linux)" desc="Kontrola z klawiszy multimedialnych, panelu systemowego i KDE Connect"
               value={s.mprisEnabled??true} onChange={v => handleSettingChange('mprisEnabled', v)} />
-            <Toggle label="Akceleracja sprzętowa GPU" desc="Lepsza wydajność renderowania interfejsu – wymaga restartu"
-              value={s.hardwareAccel??true} onChange={v => handleSettingChange('hardwareAccel', v)} />
           </Card>
         </>)}
 
@@ -307,6 +341,67 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             <Toggle label="Kolor ambientu z okładki albumu" desc="Subtelne tło dopasowane kolorystycznie do aktualnie grającej okładki"
               value={s.showAlbumColors??true} onChange={v => handleSettingChange('showAlbumColors', v)} />
           </Card>
+
+          <Card title="Wizualizacje" subtitle="Wybierz styl animacji na ekranie Teraz gramy">
+            <Toggle label="Prześwit wizualizacji w tle" desc="Działa razem z kolorem ambientu z okładki albumu"
+              value={s.showVisualizerBackdrop??true} onChange={v => handleSettingChange('showVisualizerBackdrop', v)}
+              disabled={!s.showVisualizer || !s.showAlbumColors}
+              disabledReason={!s.showVisualizer ? 'Wymaga włączonego wizualizatora audio' : 'Wymaga włączonego koloru ambientu z okładki albumu'} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {VISUALIZER_MODES.map(mode => {
+                const active = (s.visualizerMode || 'nebula') === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    onClick={() => handleSettingChange('visualizerMode', mode.id)}
+                    className={`text-left p-3 rounded-xl border transition-all ${
+                      active
+                        ? 'accent-bg accent-border text-white shadow-[0_0_18px_var(--accent-glow)]'
+                        : 'bg-black/25 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div
+                        className="w-10 h-5 rounded-full border border-white/10"
+                        style={{
+                          background: mode.id === 'bars'
+                            ? 'repeating-linear-gradient(90deg, var(--accent-from) 0 4px, transparent 4px 8px)'
+                            : mode.id === 'tunnel'
+                            ? 'radial-gradient(circle, transparent 28%, var(--accent-from) 30%, transparent 34%, var(--accent-to) 48%, transparent 52%)'
+                            : mode.id === 'aurora'
+                            ? 'linear-gradient(135deg, transparent, var(--accent-from), var(--accent-to), transparent)'
+                            : 'radial-gradient(circle, var(--accent-from), var(--accent-to), transparent)',
+                        }}
+                      />
+                      <span className="text-sm font-semibold">{mode.label}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500">{mode.desc}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card title="Pasek odtwarzacza – przyciski" subtitle="Pokaż lub ukryj przyciski widoczne obok suwaka głośności">
+            <Toggle
+              label="Widok odtwarzania"
+              desc="Przycisk otwierający pełnoekranowy widok z okładką, tekstem i kolejką"
+              value={s.showBtnNowPlaying??false}
+              onChange={v => handleSettingChange('showBtnNowPlaying', v)}
+            />
+            <Toggle
+              label="Equalizer"
+              desc="Przycisk otwierający szybki panel korekcji dźwięku"
+              value={s.showBtnEqualizer??true}
+              onChange={v => handleSettingChange('showBtnEqualizer', v)}
+            />
+            <Toggle
+              label="Wyłącznik czasowy"
+              desc="Przycisk ustawiający timer automatycznego zatrzymania odtwarzania"
+              value={s.showBtnSleepTimer??true}
+              onChange={v => handleSettingChange('showBtnSleepTimer', v)}
+            />
+          </Card>
         </>)}
 
         {activeTab === 'integrations' && (<>
@@ -317,6 +412,12 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
                   <CheckCircle2 size={16} className="text-green-400 flex-shrink-0" />
                   <span className="text-sm text-green-400 font-medium">Zalogowany jako <strong>{lfmConfig.username}</strong></span>
                 </div>
+                <Toggle
+                  label="Scrobbling Last.fm"
+                  desc="Wysyła aktualnie odtwarzany utwór i zapisuje odsłuch po przekroczeniu progu scrobble"
+                  value={lastfm?.lastfmOn ?? true}
+                  onChange={v => lastfm?.toggleLastfm?.(v)}
+                />
                 <button onClick={disconnectLastfm} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-red-400 bg-red-400/10 hover:bg-red-400/20 transition-colors">
                   <XCircle size={12} /> Wyloguj z Last.fm
                 </button>
@@ -374,7 +475,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
         {activeTab === 'about' && (<>
           <div className="flex flex-col items-center text-center py-8 mb-2">
             <div className="w-24 h-24 rounded-3xl overflow-hidden mb-4 shadow-2xl border border-zinc-700/50">
-              <img src="/icons/neonpulse-player.png" onError={e => { e.target.style.display='none'; }} alt="NeonPulse" className="w-full h-full object-cover" />
+              <img src={appIcon || '/icons/neonpulse-player.png'} onError={e => { e.target.style.display='none'; }} alt="NeonPulse" className="w-full h-full object-cover" />
             </div>
             <h2 className="text-3xl font-black tracking-tight mb-1">
               <span className="accent-text">NEON</span>PULSE
@@ -382,7 +483,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             <p className="text-zinc-500 text-sm mb-3">Audio Engine</p>
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-800 border border-zinc-700/50 text-xs text-zinc-400 mb-1">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
-              Wersja <strong className="text-white ml-1">3.5.0</strong>
+              Wersja <strong className="text-white ml-1">{appVersion}</strong>
             </div>
             <p className="text-xs text-zinc-600 mt-2">Produkcja 2026</p>
           </div>
@@ -472,10 +573,14 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             <div className="py-2 space-y-2 text-xs text-zinc-500">
               <p>NeonPulse Player jest oprogramowaniem stworzonym z pasji do muzyki i programowania.</p>
               <p>Projekt rozwijany jako open-source. Wszelkie prawa zastrzeżone © Paffcio 2026.</p>
-              <div className="flex gap-2 mt-3">
-                <a onClick={() => ipcRenderer.invoke('open-external', 'https://github.com/paffciostudio/neonpulse')}
+              <div className="flex gap-2 mt-3 flex-wrap">
+                <a onClick={() => ipcRenderer.invoke('open-external', 'https://github.com/PaffcioStudio/neonpulse')}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer">
                   <Github size={12} /> GitHub
+                </a>
+                <a onClick={() => ipcRenderer.invoke('open-external', 'mailto:pawelpotrykus94@gmail.com')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer text-xs">
+                  pawelpotrykus94@gmail.com
                 </a>
               </div>
             </div>

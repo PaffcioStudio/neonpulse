@@ -1,20 +1,39 @@
 import React, { useState, useRef, useCallback } from 'react';
 import {
   Play, SkipForward, ListOrdered, Heart, HeartOff,
-  Users, Disc3, ListPlus, ChevronRight, Plus, Check, Tag
+  Users, Disc3, ListPlus, ChevronRight, Plus, Check, Tag,
+  FolderOpen, Copy, Star
 } from 'lucide-react';
 
-export default function ContextMenu({ x, y, song, onAction, playlists = [] }) {
+export default function ContextMenu({ x, y, song, onAction, playlists = [], onRatingChange }) {
   const [showPlaylists, setShowPlaylists] = useState(false);
   const [newPlName, setNewPlName]         = useState('');
   const [showNewPl, setShowNewPl]         = useState(false);
   const [justAdded, setJustAdded]         = useState(null);
+  const [localRating, setLocalRating]     = useState(song?.rating || 0);
+  const [pos, setPos]                     = useState({ top: y, left: x });
+  const menuRef  = useRef(null);
   const hideTimer = useRef(null);
+
+  // Sync jeśli song się zmieni (nowe otwarcie menu)
+  React.useEffect(() => { setLocalRating(song?.rating || 0); }, [song?.id, song?.rating]);
+
+  // Po wyrenderowaniu mierzymy rzeczywistą wysokość i korygujemy pozycję
+  React.useEffect(() => {
+    if (!menuRef.current) return;
+    const { offsetWidth: mw, offsetHeight: mh } = menuRef.current;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const MARGIN = 8;
+    setPos({
+      top:  Math.min(y, vh - mh - MARGIN),
+      left: Math.min(x, vw - mw - MARGIN),
+    });
+  }, [x, y]);
 
   if (!song) return null;
 
-  const top  = Math.min(y, window.innerHeight - 400);
-  const left = Math.min(x, window.innerWidth  - 240);
+  const subLeft = pos.left + 224 + 4 > window.innerWidth ? -192 : '100%';
 
   const openSub  = () => { clearTimeout(hideTimer.current); setShowPlaylists(true); };
   const closeSub = () => { hideTimer.current = setTimeout(() => setShowPlaylists(false), 120); };
@@ -35,11 +54,10 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [] }) {
     setShowPlaylists(false);
   };
 
-  const subLeft = left + 224 + 4 > window.innerWidth ? -192 : '100%';
-
   return (
     <div
-      style={{ top, left }}
+      ref={menuRef}
+      style={{ top: pos.top, left: pos.left }}
       className="fixed z-[100] bg-zinc-900 border border-zinc-700/70 rounded-xl shadow-2xl w-56 overflow-visible text-sm"
       onClick={e => e.stopPropagation()}
     >
@@ -169,6 +187,40 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [] }) {
           className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
           <span className="text-zinc-500"><Disc3 size={13}/></span>
           Pobierz okładkę…
+        </button>
+
+        <div className="border-t border-zinc-800 my-1" />
+
+        {/* Ocena */}
+        <div className="px-3 py-2 flex items-center gap-1.5">
+          <span className="text-zinc-600 text-xs mr-1">Ocena:</span>
+          {[1,2,3,4,5].map(n => {
+            const newRating = n === localRating ? 0 : n;
+            return (
+              <button key={n} onClick={() => {
+                setLocalRating(newRating);
+                onRatingChange?.(song.id, newRating);
+                onAction(`rate-${newRating}`);
+              }}
+                className="transition-all hover:scale-125">
+                <Star size={14} className={n <= localRating ? 'text-yellow-400 fill-yellow-400' : 'text-zinc-700 hover:text-zinc-500'} />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="border-t border-zinc-800 my-1" />
+
+        {/* Plik */}
+        <button onClick={() => onAction('open-folder')}
+          className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
+          <span className="text-zinc-500"><FolderOpen size={13}/></span>
+          Otwórz lokalizację
+        </button>
+        <button onClick={() => { navigator.clipboard?.writeText(song.path); onAction('copy-path'); }}
+          className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
+          <span className="text-zinc-500"><Copy size={13}/></span>
+          Kopiuj ścieżkę
         </button>
       </div>
     </div>

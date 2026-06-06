@@ -152,8 +152,8 @@ export function usePlayer(settings, onError) {
 
     const onTimeUpdate = () => {
       setProgress(audio.currentTime);
-      // Zapisz pozycję co 5s dla autoPlayLast
-      if (settingsRef.current?.autoPlayLast && Math.floor(audio.currentTime) % 5 === 0) {
+      // Zapisz pozycję co 5s dla opcji przywracania startu
+      if ((settingsRef.current?.autoPlayLast || settingsRef.current?.rememberQueue) && Math.floor(audio.currentTime) % 5 === 0) {
         save(STORAGE_KEYS.lastPos, audio.currentTime);
       }
       // Gapless – prebuffer następny 10s przed końcem
@@ -276,8 +276,11 @@ export function usePlayer(settings, onError) {
 
   // ─── Zapamiętaj kolejkę ──────────────────────────────────────
   useEffect(() => {
-    if (settings?.rememberQueue) save(STORAGE_KEYS.queue, { queue, queueIndex });
-  }, [queue, queueIndex, settings?.rememberQueue]);
+    if ((settings?.rememberQueue || settings?.autoPlayLast) && queue.length > 0) {
+      save(STORAGE_KEYS.queue, queue.map(s => s.id));
+      save(STORAGE_KEYS.queueIdx, queueIndex);
+    }
+  }, [queue, queueIndex, settings?.rememberQueue, settings?.autoPlayLast]);
 
   // ─── ReplayGain: ustaw gain na podstawie tagu utworu ────────
   const applyReplayGain = useCallback((song) => {
@@ -318,8 +321,8 @@ export function usePlayer(settings, onError) {
     }
     audio.volume = isMuted ? 0 : volume / 100;
 
-    // autoPlayLast – wznów od ostatniej pozycji
-    if (settings?.autoPlayLast) {
+    // Zachowaj ostatni utwór dla opcji startowego odtwarzania / wznowienia.
+    if (settings?.autoPlayLast || settings?.rememberQueue) {
       const lastId  = load(STORAGE_KEYS.lastSong, null);
       const lastPos = load(STORAGE_KEYS.lastPos,  0);
       if (lastId === currentSong.id && lastPos > 0) {
@@ -415,7 +418,10 @@ export function usePlayer(settings, onError) {
     if (!isShuffle || q.length <= 1) {
       return (currentIdx + 1) % q.length;
     }
-    const notPlayed = q.map((s, i) => i).filter(i => i !== currentIdx && !shuffleHistoryRef.current.has(s.id));
+    const notPlayed = q
+      .map((song, index) => ({ song, index }))
+      .filter(({ song, index }) => index !== currentIdx && !shuffleHistoryRef.current.has(song.id))
+      .map(({ index }) => index);
     if (notPlayed.length === 0) {
       // Cały cykl odtworzony – reset historii
       shuffleHistoryRef.current.clear();

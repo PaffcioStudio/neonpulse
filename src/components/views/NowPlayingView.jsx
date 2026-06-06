@@ -37,7 +37,7 @@ export default function NowPlayingView({
   setVolume, setIsMuted, setIsShuffle, cycleRepeat,
   onToggleFavorite, onClose, displayList,
   onSleepTimer, sleepRemaining,
-  audioRef,
+  audioRef, animationsEnabled = true, isClosing = false,
 }) {
   const [tab, setTab] = useState('cover'); // cover | lyrics | queue
   const [lyrics, setLyrics] = useState(null);
@@ -141,7 +141,9 @@ export default function NowPlayingView({
   }, [currentSong?.cover]);
 
   return (
-    <div className="fixed inset-0 z-[150] flex flex-col overflow-hidden"
+    <div className={`fixed inset-0 z-[150] flex flex-col overflow-hidden ${
+      animationsEnabled ? (isClosing ? 'np-full-exit' : 'np-full-enter') : ''
+    }`}
       style={{ background: `linear-gradient(180deg, ${ambientColor} 0%, #09090b 100%)` }}>
 
       {/* Top bar */}
@@ -168,7 +170,7 @@ export default function NowPlayingView({
         </div>
 
         <button onClick={() => onSleepTimer?.()}
-          title="Sleep Timer"
+          title="Wyłącznik czasowy"
           className={`p-2 rounded-xl transition-colors relative ${
             sleepRemaining > 0 ? 'text-indigo-400 bg-indigo-400/10' : 'text-zinc-600 hover:text-zinc-300 hover:bg-white/10'
           }`}>
@@ -228,7 +230,9 @@ export default function NowPlayingView({
                   const r = e.currentTarget.getBoundingClientRect();
                   seekTo((e.clientX - r.left) / r.width);
                 }}>
-                <div className="h-full accent-gradient rounded-full transition-none relative"
+                <div className={`h-full accent-gradient rounded-full transition-none relative ${
+                  isPlaying && animationsEnabled ? 'progress-pulse' : ''
+                }`}
                   style={{ width: `${progressPct}%` }}>
                   <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-md opacity-0 group-hover/seek:opacity-100 transition-opacity"
                     style={{ boxShadow: '0 0 8px var(--accent-glow)' }} />

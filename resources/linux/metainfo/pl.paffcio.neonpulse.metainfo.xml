@@ -11,9 +11,11 @@
   </description>
   <launchable type="desktop-id">pl.paffcio.neonpulse.desktop</launchable>
   <icon type="stock">neonpulse-player</icon>
-  <url type="homepage">https://github.com/paffciostudio/neonpulse-player</url>
+  <url type="homepage">https://github.com/PaffcioStudio/neonpulse</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="3.6.0" date="2026-05-01"/>
+    <release version="3.5.0" date="2026-04-01"/>
     <release version="3.4.0" date="2025-01-01"/>
   </releases>
   <categories>

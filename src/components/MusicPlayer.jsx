@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Play, Search, Heart, Disc, Music2, Mic2, Sparkles, Shuffle, ListOrdered, Tag, ListPlus, Moon } from 'lucide-react';
+import { Play, Search, Heart, Disc, Music2, Mic2, Sparkles, Shuffle, Tag, ListPlus, Moon, X } from 'lucide-react';
 
 import Sidebar          from './Sidebar';
 import PlayerBar        from './PlayerBar';
@@ -20,9 +20,10 @@ import QueuePanel       from './QueuePanel';
 import HeartButton      from './HeartButton';
 import NowPlayingView   from './views/NowPlayingView';
 import SleepTimerModal  from './SleepTimerModal';
+import BulkTagEditorModal from './BulkTagEditorModal';
+import EqualizerPanel   from './EqualizerPanel';
 import { usePlayer, REPEAT_MODES } from '../hooks/usePlayer';
 import { useLastFm } from '../hooks/useLastFm';
-import MiniPlayer from './MiniPlayer';
 import {
   getCoverSrc, COVER_PLACEHOLDER, filterBySmartRules,
   shuffleArray, pluralTracks, extractDominantColor, applyTheme
@@ -43,14 +44,55 @@ const DEFAULT_SMART = [
 ];
 
 const DEFAULT_SETTINGS = {
-  autoPlayLast:false, continueOnStart:false, gaplessPlayback:false, crossfade:false,
+  autoPlayLast:false, gaplessPlayback:false, crossfade:false,
   defaultShuffle:false, rememberVolume:true, rememberQueue:false,
   minimizeToTray:true, startMinimized:false, showTrayControls:true,
-  mprisEnabled:true, hardwareAccel:true,
-  animationsEnabled:true, showVisualizer:true, compactMode:false, showAlbumColors:true,
+  mprisEnabled:true,
+  animationsEnabled:true, showVisualizer:true, visualizerMode:'nebula', showVisualizerBackdrop:true, compactMode:false, showAlbumColors:true,
   fadeInOnPlay:false, replayGainEnabled:true,
+  showBtnEqualizer:true,
   theme:'fuchsia',
 };
+
+function normalizeSettings(settings) {
+  const next = { ...settings };
+  delete next.continueOnStart;
+  delete next.hardwareAccel;
+  return next;
+}
+
+function loadQueueSnapshot(library) {
+  const queueRaw = localStorage.getItem('neonpulse_queue');
+  const idxRaw   = localStorage.getItem('neonpulse_queue_idx');
+  const lastId   = JSON.parse(localStorage.getItem('neonpulse_last_song') || 'null');
+  const lastPos  = JSON.parse(localStorage.getItem('neonpulse_last_pos') || '0');
+  const wasPlaying = JSON.parse(localStorage.getItem('neonpulse_was_playing') || 'false');
+
+  let savedIds = [];
+  let savedIdx = 0;
+
+  if (queueRaw) {
+    const parsed = JSON.parse(queueRaw);
+    if (Array.isArray(parsed)) {
+      savedIds = parsed;
+      savedIdx = idxRaw !== null ? JSON.parse(idxRaw) : 0;
+    } else if (parsed && Array.isArray(parsed.queue)) {
+      savedIds = parsed.queue.map(song => typeof song === 'object' ? song.id : song).filter(Boolean);
+      savedIdx = Number.isInteger(parsed.queueIndex) ? parsed.queueIndex : 0;
+    }
+  }
+
+  if (savedIds.length === 0 && lastId) {
+    savedIds = [lastId];
+    savedIdx = 0;
+  }
+
+  const songs = savedIds.map(id => library.find(s => s.id === id)).filter(Boolean);
+  if (songs.length === 0) return { songs: [], idx: -1, song: null, lastPos, wasPlaying };
+
+  const idx = Math.max(0, Math.min(Number(savedIdx) || 0, songs.length - 1));
+  return { songs, idx, song: songs[idx], lastPos, wasPlaying };
+}
 
 // ─────────────────────────────────────────────────────────────
 export default function MusicPlayer() {
@@ -60,11 +102,13 @@ export default function MusicPlayer() {
   const [isTransitioning, setTransitioning] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [isSidebarOpen,   setSidebarOpen]   = useState(true);
-  const [isMiniPlayer,    setIsMiniPlayer]  = useState(false);
   const [isNowPlaying,    setIsNowPlaying]  = useState(false);
   const [isQueueOpen,     setIsQueueOpen]   = useState(false);
   const [showSleepTimer,  setShowSleepTimer] = useState(false);
-  const [sleepSeconds,    setSleepSeconds]   = useState(0); // 0 = nieaktywny
+  const [showEqualizer,   setShowEqualizer]  = useState(false);
+  const [closingOverlay,  setClosingOverlay] = useState(null);
+  const [sleepSeconds,    setSleepSeconds]   = useState(0);
+  const [bulkEditSongs,   setBulkEditSongs]  = useState(null); // null = zamknięty
   const [searchQuery,     setSearchQuery]   = useState('');
   const [scanInfo,        setScanInfo]      = useState({ isScanning:false, count:0 });
   const [ctxMenu,         setCtxMenu]       = useState({ visible:false, x:0, y:0, song:null });
@@ -98,7 +142,7 @@ export default function MusicPlayer() {
 
   // Settings
   const [settings, setSettings] = useState(() => {
-    try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem('neonpulse_settings')||'{}') }; }
+    try { return normalizeSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem('neonpulse_settings')||'{}') }); }
     catch { return DEFAULT_SETTINGS; }
   });
 
@@ -106,7 +150,7 @@ export default function MusicPlayer() {
   const player = usePlayer(settings, (msg) => setToasts(prev => { const id = Date.now(); setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000); return [...prev, { id, msg, type: 'error' }]; }));
 
   // ─── Last.fm scrobbling ─────────────────────────────────────
-  useLastFm(player.currentSong, player.isPlaying, player.progress);
+  const lastfm = useLastFm(player.currentSong, player.isPlaying, player.progress);
 
   // ─── Toast notifications ──────────────────────────────────────
   const showToast = useCallback((msg, type = 'error') => {
@@ -147,12 +191,13 @@ export default function MusicPlayer() {
       minimizeToTray:   settings.minimizeToTray,
       startMinimized:   settings.startMinimized,
       showTrayControls: settings.showTrayControls,
-      hardwareAccel:    settings.hardwareAccel,
+      mprisEnabled:     settings.mprisEnabled,
+      startup:          true,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── continueOnStart – przywróć kolejkę i wznów po starcie ──
+  // ─── Przywróć kolejkę / ostatni utwór po starcie ────────────
   const restoredRef = React.useRef(false);
   useEffect(() => {
     // Uruchamia się raz gdy biblioteka się załaduje
@@ -160,42 +205,32 @@ export default function MusicPlayer() {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
-    if (!settings.continueOnStart && !settings.autoPlayLast) return;
-
     try {
-      const savedIds  = JSON.parse(localStorage.getItem('neonpulse_queue')    || '[]');
-      const savedIdx  = JSON.parse(localStorage.getItem('neonpulse_queue_idx')|| '0');
-      const savedPos  = JSON.parse(localStorage.getItem('neonpulse_last_pos') || '0');
-      const wasPlaying = JSON.parse(localStorage.getItem('neonpulse_was_playing') || 'false');
+      const { songs, idx, song, lastPos, wasPlaying } = loadQueueSnapshot(library);
+      const shouldPlay = settings.autoPlayLast && song;
 
-      if (!Array.isArray(savedIds) || savedIds.length === 0) return;
+      if (song && (settings.autoPlayLast || settings.rememberQueue)) {
+        player.setQueue(songs);
+        player.setQueueIndex(idx);
+        player.setCurrentSong(song);
 
-      // Zmapuj ID-ki na obiekty z biblioteki
-      const songs = savedIds.map(id => library.find(s => s.id === id)).filter(Boolean);
-      if (songs.length === 0) return;
-
-      const idx  = Math.min(savedIdx, songs.length - 1);
-      const song = songs[idx];
-      if (!song) return;
-
-      // Ustaw kolejkę i utwór
-      player.setQueue(songs);
-      player.setQueueIndex(idx);
-      player.setCurrentSong(song);
-
-      // Przywróć pozycję
-      if (savedPos > 0 && player.audioRef?.current) {
-        setTimeout(() => {
-          if (player.audioRef.current) player.audioRef.current.currentTime = savedPos;
-        }, 300);
+        if (lastPos > 0 && player.audioRef?.current) {
+          setTimeout(() => {
+            if (player.audioRef.current) player.audioRef.current.currentTime = lastPos;
+          }, 300);
+        }
       }
 
-      // Wznów odtwarzanie jeśli grało
-      if (wasPlaying && settings.continueOnStart) {
-        setTimeout(() => player.setIsPlaying(true), 400);
+      if (!shouldPlay) {
+        setActiveViewRaw(library.some(s => s.isFavorite) ? 'favorites' : 'library');
+        return;
       }
+
+      setActiveViewRaw('home');
+      setTimeout(() => player.setIsPlaying(true), 400);
     } catch (e) {
       console.warn('[restore]', e);
+      setActiveViewRaw(library.some(s => s.isFavorite) ? 'favorites' : 'library');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [library]);
@@ -391,7 +426,8 @@ export default function MusicPlayer() {
   // ─── Wizualizator ────────────────────────────────────────────
   useEffect(() => {
     cancelAnimationFrame(animFrameRef.current);
-    if (activeView !== 'home' || !settings.showVisualizer ||
+    const visualizerAsBackdrop = activeView !== 'home' && settings.showAlbumColors && settings.showVisualizerBackdrop;
+    if ((activeView !== 'home' && !visualizerAsBackdrop) || !settings.showVisualizer ||
         !canvasRef.current || !player.analyserRef.current) return;
 
     const canvas = canvasRef.current;
@@ -417,7 +453,7 @@ export default function MusicPlayer() {
     );
 
     // Cząsteczki
-    const PARTICLE_COUNT = 60;
+    const PARTICLE_COUNT = 28;
     const particles = Array.from({ length: PARTICLE_COUNT }, () => ({
       x: Math.random() * 1, y: Math.random() * 1,
       size: Math.random() * 2 + 0.5,
@@ -426,12 +462,63 @@ export default function MusicPlayer() {
       opacity: Math.random() * 0.4 + 0.1,
     }));
 
+    // ── Gwiazdki (rating) ──────────────────────────────────────
+    // Im wyższy rating tym więcej gwiazdek i silniejszy efekt
+    const rating = player.currentSong?.rating || 0;
+    const STAR_COUNT = rating * 8; // ograniczone dla płynności
+    const stars = Array.from({ length: STAR_COUNT }, (_, i) => ({
+      x:        Math.random(),
+      y:        Math.random(),
+      baseSize: Math.random() * 1.8 + 0.4,
+      twinkleSpeed: Math.random() * 0.03 + 0.01,
+      twinkleOffset: Math.random() * Math.PI * 2,
+      orbitR:   Math.random() * 0.008 + 0.002,
+      orbitAngle: Math.random() * Math.PI * 2,
+      orbitSpeed: (Math.random() * 0.002 + 0.0005) * (Math.random() > 0.5 ? 1 : -1),
+      // Gwiazdki przy wyższym ratingu są jaśniejsze i większe
+      brightness: 0.3 + (rating / 5) * 0.5 + Math.random() * 0.2,
+      // Kształt 4-5-6 ramion zależnie od numeru
+      spikes: i % 3 === 0 ? 6 : i % 3 === 1 ? 5 : 4,
+    }));
+
+    // Funkcja rysowania gwiazdy wieloramiennej
+    function drawStar(ctx, x, y, spikes, outerR, innerR, alpha, color) {
+      let rot = (Math.PI / 2) * 3;
+      const step = Math.PI / spikes;
+      ctx.beginPath();
+      ctx.moveTo(x, y - outerR);
+      for (let i = 0; i < spikes; i++) {
+        ctx.lineTo(
+          x + Math.cos(rot) * outerR,
+          y + Math.sin(rot) * outerR
+        );
+        rot += step;
+        ctx.lineTo(
+          x + Math.cos(rot) * innerR,
+          y + Math.sin(rot) * innerR
+        );
+        rot += step;
+      }
+      ctx.lineTo(x, y - outerR);
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${color},${alpha})`;
+      ctx.fill();
+      // Delikatny blask wokół gwiazdy
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, outerR * 3);
+      glow.addColorStop(0, `rgba(${color},${alpha * 0.4})`);
+      glow.addColorStop(1, `rgba(${color},0)`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, outerR * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     let t = 0;
     let lastFrame = 0;
 
     const render = (ts) => {
       animFrameRef.current = requestAnimationFrame(render);
-      if (ts - lastFrame < 20) return; // ~50fps
+      if (ts - lastFrame < 33) return; // ~30fps, mniej obciąża Teraz gramy
       lastFrame = ts;
       t += 0.012;
 
@@ -447,6 +534,85 @@ export default function MusicPlayer() {
 
       // Wyczyść
       ctx.clearRect(0, 0, w, h);
+      const visualizerMode = settings.visualizerMode || 'nebula';
+
+      if (visualizerMode === 'bars') {
+        const bars = 42;
+        const barW = w / bars;
+        const baseY = h * 0.58;
+        const bg = ctx.createLinearGradient(0, 0, 0, h);
+        bg.addColorStop(0, `rgba(${accentRgb},${0.08 + bass * 0.16})`);
+        bg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < bars; i++) {
+          const fi = Math.floor((i / bars) * freqBuf.length * 0.85);
+          const v = playing ? freqBuf[fi] / 255 : 0.08 + Math.sin(t + i * 0.2) * 0.03;
+          const bh = Math.max(3, v * h * 0.48);
+          const mix = i / bars;
+          const color = mix < 0.5 ? accentRgb : accentRgb2;
+          ctx.fillStyle = `rgba(${color},${0.28 + v * 0.62})`;
+          const x = i * barW + barW * 0.16;
+          const y = baseY - bh / 2;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(x, y, barW * 0.68, bh, 5);
+          else ctx.rect(x, y, barW * 0.68, bh);
+          ctx.fill();
+        }
+        return;
+      }
+
+      if (visualizerMode === 'tunnel') {
+        const cx = w * 0.5, cy = h * 0.5;
+        const rings = 18;
+        ctx.fillStyle = `rgba(${accentRgb2},${0.06 + treble * 0.08})`;
+        ctx.fillRect(0, 0, w, h);
+        for (let i = rings; i >= 1; i--) {
+          const ratio = i / rings;
+          const twist = t * (0.6 + treble * 2) + i * 0.45;
+          const r = Math.min(w, h) * ratio * (0.43 + bass * 0.11);
+          const sides = 5 + (i % 3);
+          ctx.beginPath();
+          for (let p = 0; p <= sides; p++) {
+            const a = (p / sides) * Math.PI * 2 + twist;
+            const wobble = 1 + Math.sin(a * 3 + t + mid * 4) * 0.08;
+            const x = cx + Math.cos(a) * r * wobble;
+            const y = cy + Math.sin(a) * r * wobble;
+            if (p === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = `rgba(${i % 2 ? accentRgb : accentRgb2},${0.12 + ratio * 0.35})`;
+          ctx.lineWidth = 1 + ratio * 3;
+          ctx.stroke();
+        }
+        return;
+      }
+
+      if (visualizerMode === 'aurora') {
+        const bg = ctx.createRadialGradient(w * 0.2, h * 0.25, 0, w * 0.5, h * 0.5, Math.max(w, h));
+        bg.addColorStop(0, `rgba(${accentRgb},${0.11 + bass * 0.12})`);
+        bg.addColorStop(0.55, `rgba(${accentRgb2},${0.07 + mid * 0.1})`);
+        bg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+        for (let band = 0; band < 5; band++) {
+          ctx.beginPath();
+          const yBase = h * (0.2 + band * 0.13);
+          ctx.moveTo(0, yBase);
+          for (let x = 0; x <= w; x += 12) {
+            const fi = Math.floor((x / w) * freqBuf.length);
+            const tone = playing ? freqBuf[fi] / 255 : 0.12;
+            const y = yBase + Math.sin(x * 0.011 + t * (1.5 + band * 0.25) + band) * h * 0.055 + tone * h * 0.16;
+            ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = `rgba(${band % 2 ? accentRgb : accentRgb2},${0.18 + energy * 0.28})`;
+          ctx.lineWidth = 2 + band * 0.7;
+          ctx.shadowColor = `rgba(${band % 2 ? accentRgb : accentRgb2},0.45)`;
+          ctx.shadowBlur = 18;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+        return;
+      }
 
       // ── 1. Pulsujące koło tła (bass) ──────────────────────────
       const cx = w * 0.5, cy = h * 0.5;
@@ -460,7 +626,7 @@ export default function MusicPlayer() {
       ctx.fillRect(0, 0, w, h);
 
       // ── 2. Okrąg spektrum (słupki w kole) ─────────────────────
-      const BARS = 120;
+      const BARS = 72;
       const innerR = baseR * 0.7;
       for (let i = 0; i < BARS; i++) {
         const angle = (i / BARS) * Math.PI * 2 - Math.PI / 2;
@@ -516,6 +682,43 @@ export default function MusicPlayer() {
         ctx.fill();
       }
 
+
+      // ── 4b. Gwiazdki w rytm muzyki (rating) ───────────────────
+      if (stars.length > 0) {
+        for (const s of stars) {
+          // Mruganie w rytm muzyki
+          s.twinkleOffset += s.twinkleSpeed * (1 + (playing ? treble * 4 : 0));
+          const twinkle = 0.5 + 0.5 * Math.sin(s.twinkleOffset);
+          // Pulsacja na bass
+          const bassPulse = playing ? bass * 0.6 : 0;
+          const pulseTwinkle = twinkle + bassPulse * 0.4;
+
+          // Orbitowanie
+          s.orbitAngle += s.orbitSpeed * (1 + (playing ? energy * 2 : 0));
+          const ox = s.x + Math.sin(s.orbitAngle) * s.orbitR;
+          const oy = s.y + Math.cos(s.orbitAngle) * s.orbitR;
+
+          const px = ox * w;
+          const py = oy * h;
+
+          // Rozmiar pulsuje z basem
+          const outerR = s.baseSize * (1.5 + pulseTwinkle * 0.8 + (playing ? bass * 2.5 : 0));
+          const innerR = outerR * 0.4;
+
+          // Alpha – delikatne, zależne od brightness i rytmu
+          const alpha = s.brightness * pulseTwinkle * (0.4 + (playing ? energy * 0.5 : 0.1));
+
+          // Kolor: mix accent + biały (im wyższy rating tym bielsze)
+          const whiteMix = (rating - 1) / 4; // 0 przy 1★, 1 przy 5★
+          const sr = Math.round(parseInt(accentRgb.split(',')[0]) * (1 - whiteMix * 0.6) + 255 * whiteMix * 0.6);
+          const sg = Math.round(parseInt(accentRgb.split(',')[1]) * (1 - whiteMix * 0.5) + 255 * whiteMix * 0.5);
+          const sb = Math.round(parseInt(accentRgb.split(',')[2]) * (1 - whiteMix * 0.3) + 255 * whiteMix * 0.3);
+          const starColor = `${sr},${sg},${sb}`;
+
+          drawStar(ctx, px, py, s.spikes, outerR, innerR, alpha, starColor);
+        }
+      }
+
       // ── 5. Słupki na górze (treble) ───────────────────────────
       if (playing) {
         const TB = 32;
@@ -538,7 +741,7 @@ export default function MusicPlayer() {
       cancelAnimationFrame(animFrameRef.current);
       window.removeEventListener('resize', onResize);
     };
-  }, [activeView, player.isPlaying, settings.showVisualizer, settings.theme]);
+  }, [activeView, player.isPlaying, settings.showVisualizer, settings.showAlbumColors, settings.showVisualizerBackdrop, settings.visualizerMode, settings.theme, player.currentSong?.id, player.currentSong?.rating]);
 
   // ─── Filtry ─────────────────────────────────────────────────
   const searchFiltered = useMemo(() => {
@@ -550,6 +753,14 @@ export default function MusicPlayer() {
       (s.album||'').toLowerCase().includes(q)
     );
   }, [library, searchQuery]);
+
+  // currentSong z aktualnym ratingiem z library (bez modyfikacji player.currentSong)
+  const enrichedCurrentSong = useMemo(() => {
+    if (!player.currentSong) return null;
+    const fromLib = library.find(s => s.id === player.currentSong.id);
+    if (!fromLib) return player.currentSong;
+    return { ...player.currentSong, rating: fromLib.rating, isFavorite: fromLib.isFavorite };
+  }, [player.currentSong, library]);
 
   const displayList = useMemo(() => {
     switch (activeView) {
@@ -729,6 +940,16 @@ export default function MusicPlayer() {
 
   const openCtx = (e, song) => { e.preventDefault(); setCtxMenu({ visible:true, x:e.clientX, y:e.clientY, song }); };
 
+  const updateRating = useCallback((id, rating) => {
+    fetch(`${API_URL}/rating`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, rating }),
+    }).then(() => {
+      setLibrary(prev => prev.map(s => s.id === id ? { ...s, rating } : s));
+    });
+  }, [API_URL]);
+
   const handleCtxAction = (action, song) => {
     switch (action) {
       case 'play-now':   player.playFromList(song, displayList); break;
@@ -763,6 +984,17 @@ export default function MusicPlayer() {
           }
         })();
         break;
+      case 'open-folder':
+        ipcRenderer.invoke('open-path', song.path);
+        break;
+      case 'copy-path':
+        showToast('Ścieżka skopiowana do schowka', 'success');
+        break;
+    }
+    if (action.startsWith('rate-')) {
+      const rating = Number(action.replace('rate-', ''));
+      updateRating(song.id, rating);
+      return;
     }
     if (action.startsWith('add-pl-')) {
       addToPlaylist(action.replace('add-pl-', ''), song.id);
@@ -800,17 +1032,45 @@ export default function MusicPlayer() {
 
   const handleSettingChange = (key, value) => {
     setSettings(prev => {
-      const next = { ...prev, [key]:value };
+      const next = normalizeSettings({ ...prev, [key]:value });
       try { localStorage.setItem('neonpulse_settings', JSON.stringify(next)); } catch {}
       // Przekaż ustawienia systemowe do electron-main
       ipcRenderer.send('app:settings', {
         minimizeToTray:   next.minimizeToTray,
         startMinimized:   next.startMinimized,
         showTrayControls: next.showTrayControls,
+        mprisEnabled:     next.mprisEnabled,
       });
       return next;
     });
   };
+
+  const closeOverlay = useCallback((name, closeFn) => {
+    if (!settings.animationsEnabled) {
+      closeFn();
+      return;
+    }
+    setClosingOverlay(name);
+    setTimeout(() => {
+      closeFn();
+      setClosingOverlay(null);
+    }, 150);
+  }, [settings.animationsEnabled]);
+
+  const toggleQueue = useCallback(() => {
+    if (isQueueOpen) closeOverlay('queue', () => setIsQueueOpen(false));
+    else setIsQueueOpen(true);
+  }, [isQueueOpen, closeOverlay]);
+
+  const toggleNowPlaying = useCallback(() => {
+    if (isNowPlaying) closeOverlay('nowPlaying', () => setIsNowPlaying(false));
+    else setIsNowPlaying(true);
+  }, [isNowPlaying, closeOverlay]);
+
+  const toggleEqualizer = useCallback(() => {
+    if (showEqualizer) closeOverlay('equalizer', () => setShowEqualizer(false));
+    else setShowEqualizer(true);
+  }, [showEqualizer, closeOverlay]);
 
   // ─── Render helpers ──────────────────────────────────────────
   const contentCls = `flex-1 overflow-y-auto custom-scrollbar relative transition-opacity duration-[120ms] ${isTransitioning ? 'opacity-0' : 'opacity-100'}`;
@@ -840,6 +1100,14 @@ export default function MusicPlayer() {
           />
         )}
 
+        {activeView !== 'home' && settings.showAlbumColors && settings.showVisualizer && settings.showVisualizerBackdrop && (
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 w-full h-full pointer-events-none z-0 opacity-[0.18]"
+            style={{ mixBlendMode: 'screen' }}
+          />
+        )}
+
         {/* TOP BAR */}
         <div className="relative z-30 h-14 flex items-center justify-between px-5 bg-black/20 backdrop-blur-sm border-b border-zinc-800/40 flex-shrink-0">
           <div className="flex-1 max-w-lg relative">
@@ -855,14 +1123,6 @@ export default function MusicPlayer() {
               onBlur={e  => e.target.style.borderColor = ''}
             />
           </div>
-          <button
-            onClick={() => setIsQueueOpen(p => !p)}
-            className={`ml-4 flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border transition-colors ${
-              isQueueOpen ? 'accent-border accent-text accent-bg' : 'border-zinc-700 text-zinc-500 hover:border-zinc-600'
-            }`}
-          >
-            <ListOrdered size={13} /> {player.queue.length}
-          </button>
         </div>
 
         {/* CONTENT */}
@@ -1052,6 +1312,9 @@ export default function MusicPlayer() {
                 onPlay={song => player.playFromList(song, displayList)}
                 onFavorite={toggleFavorite}
                 onContextMenu={openCtx}
+                onBulkEdit={setBulkEditSongs}
+                autoScrollCurrent={activeView === 'library' && !!player.currentSong}
+                animationsEnabled={settings.animationsEnabled}
                 emptyMessage={library.length===0 ? 'Biblioteka pusta. Dodaj folder w Ustawienia.' : 'Brak wyników.'}
               />
             </div>
@@ -1153,6 +1416,7 @@ export default function MusicPlayer() {
               musicPaths={musicPaths} library={library} scanInfo={scanInfo}
               onAddFolder={handleBrowseFolder} onRemovePath={handleRemovePath} onRescan={handleRescan}
               settings={settings} onSettingChange={handleSettingChange}
+              lastfm={lastfm}
               setEqGain={player.setEqGain} eqFiltersRef={player.eqFiltersRef} EQ_FREQS={player.EQ_FREQS}
             />
           )}
@@ -1188,13 +1452,18 @@ export default function MusicPlayer() {
         {/* Context menu */}
         {ctxMenu.visible && ctxMenu.song && (
           <ContextMenu x={ctxMenu.x} y={ctxMenu.y} song={ctxMenu.song} playlists={playlists}
-            onAction={action => handleCtxAction(action, ctxMenu.song)} />
+            onAction={action => handleCtxAction(action, ctxMenu.song)}
+            onRatingChange={(id, rating) => {
+              updateRating(id, rating);
+              setCtxMenu(prev => prev.song?.id === id ? { ...prev, song: { ...prev.song, rating } } : prev);
+            }}
+          />
         )}
 
         {/* Now Playing – pełnoekranowy widok */}
         {isNowPlaying && (
           <NowPlayingView
-            currentSong={player.currentSong}
+            currentSong={enrichedCurrentSong}
             isPlaying={player.isPlaying}
             progress={player.progress}
             volume={player.volume}
@@ -1212,10 +1481,27 @@ export default function MusicPlayer() {
             cycleRepeat={player.cycleRepeat}
             onToggleFavorite={toggleFavorite}
             displayList={displayList}
-            onClose={() => setIsNowPlaying(false)}
+            onClose={() => closeOverlay('nowPlaying', () => setIsNowPlaying(false))}
             onSleepTimer={() => setShowSleepTimer(true)}
             sleepRemaining={sleepSeconds}
             audioRef={player.audioRef}
+            animationsEnabled={settings.animationsEnabled}
+            isClosing={closingOverlay === 'nowPlaying'}
+          />
+        )}
+
+        {/* Bulk Tag Editor */}
+        {bulkEditSongs && (
+          <BulkTagEditorModal
+            songs={bulkEditSongs}
+            onClose={() => setBulkEditSongs(null)}
+            onSaved={updated => {
+              setLibrary(prev => {
+                const map = Object.fromEntries(updated.map(s => [s.id, s]));
+                return prev.map(s => map[s.id] ? { ...s, ...map[s.id] } : s);
+              });
+              setBulkEditSongs(null);
+            }}
           />
         )}
 
@@ -1224,8 +1510,27 @@ export default function MusicPlayer() {
           <SleepTimerModal
             currentTimer={sleepSeconds}
             onSet={secs => setSleepSeconds(secs || 0)}
-            onClose={() => setShowSleepTimer(false)}
+            onClose={() => closeOverlay('sleepTimer', () => setShowSleepTimer(false))}
+            animationsEnabled={settings.animationsEnabled}
+            isClosing={closingOverlay === 'sleepTimer'}
           />
+        )}
+
+        {showEqualizer && (
+          <div className={`fixed right-6 bottom-28 z-[210] w-[min(420px,calc(100vw-2rem))] shadow-2xl ${
+            settings.animationsEnabled ? (closingOverlay === 'equalizer' ? 'np-pop-exit' : 'np-pop-enter') : ''
+          }`}>
+            <div className="relative">
+              <button
+                onClick={() => closeOverlay('equalizer', () => setShowEqualizer(false))}
+                className="absolute -right-2 -top-2 z-10 p-1.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 transition-colors shadow-lg"
+                title="Zamknij"
+              >
+                <X size={14} />
+              </button>
+              <EqualizerPanel setEqGain={player.setEqGain} eqFiltersRef={player.eqFiltersRef} EQ_FREQS={player.EQ_FREQS} />
+            </div>
+          </div>
         )}
 
         {/* Edytor tagów */}
@@ -1259,34 +1564,11 @@ export default function MusicPlayer() {
         {isQueueOpen && (
           <QueuePanel queue={player.queue} queueIndex={player.queueIndex} currentSong={player.currentSong}
             onSelect={(song, idx) => { player.setQueueIndex(idx); player.setCurrentSong(song); player.setIsPlaying(true); }}
-            onClose={() => setIsQueueOpen(false)}
+            onClose={() => closeOverlay('queue', () => setIsQueueOpen(false))}
             onRemove={player.removeFromQueue}
-            onReorder={player.reorderQueue} />
-        )}
-
-        {/* Mini Player */}
-        {isMiniPlayer && (
-          <MiniPlayer
-            currentSong={player.currentSong}
-            isPlaying={player.isPlaying}
-            progress={player.progress}
-            volume={player.volume}
-            isMuted={player.isMuted}
-            repeatMode={player.repeatMode}
-            isShuffle={player.isShuffle}
-            handlePlayPause={player.handlePlayPause}
-            handleNext={player.handleNext}
-            handlePrev={player.handlePrev}
-            seekTo={player.seekTo}
-            setVolume={player.setVolume}
-            setIsMuted={player.setIsMuted}
-            setIsShuffle={player.setIsShuffle}
-            cycleRepeat={player.cycleRepeat}
-            onToggleFavorite={toggleFavorite}
-            displayList={displayList}
-            onClose={() => setIsMiniPlayer(false)}
-            onExpand={() => setIsMiniPlayer(false)}
-          />
+            onReorder={player.reorderQueue}
+            animationsEnabled={settings.animationsEnabled}
+            isClosing={closingOverlay === 'queue'} />
         )}
 
         {/* Toast notifications */}
@@ -1305,7 +1587,7 @@ export default function MusicPlayer() {
         </div>
 
         <PlayerBar
-          currentSong={player.currentSong} isPlaying={player.isPlaying}
+          currentSong={enrichedCurrentSong} isPlaying={player.isPlaying}
           progress={player.progress} volume={player.volume} isMuted={player.isMuted}
           repeatMode={player.repeatMode} isShuffle={player.isShuffle} queue={player.queue}
           setIsMuted={player.setIsMuted} setVolume={player.setVolume}
@@ -1314,11 +1596,15 @@ export default function MusicPlayer() {
           handlePrev={player.handlePrev} seekTo={player.seekTo}
           handleVolumeScroll={player.handleVolumeScroll}
           onToggleFavorite={toggleFavorite}
-          onShowQueue={() => setIsQueueOpen(p => !p)} isQueueOpen={isQueueOpen}
+          onShowQueue={toggleQueue} isQueueOpen={isQueueOpen}
           onGoHome={() => setActiveView('home')} displayList={displayList}
-          settings={settings} onMiniPlayer={() => setIsMiniPlayer(p => !p)} isMiniPlayer={isMiniPlayer}
-          onNowPlaying={() => setIsNowPlaying(p => !p)} isNowPlaying={isNowPlaying}
+          onGoAlbum={() => player.currentSong?.album && setActiveView('albums', { album: player.currentSong.album })}
+          onGoArtist={() => player.currentSong?.artist && setActiveView('artists', { artist: player.currentSong.artist })}
+          settings={settings}
+          onNowPlaying={toggleNowPlaying} isNowPlaying={isNowPlaying}
           onSleepTimer={() => setShowSleepTimer(true)} sleepRemaining={sleepSeconds}
+          onRatingChange={(id, rating) => updateRating(id, rating)}
+          onEqualizer={toggleEqualizer} isEqualizerOpen={showEqualizer}
         />
       </main>
 

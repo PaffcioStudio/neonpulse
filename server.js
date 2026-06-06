@@ -97,6 +97,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_path    ON songs(path);
 `);
 
+// ── Migracje ─────────────────────────────────────────────────────────────────
+try { db.prepare('ALTER TABLE songs ADD COLUMN rating INTEGER DEFAULT 0').run(); } catch {}
+try {
+  db.prepare(`CREATE TABLE IF NOT EXISTS app_launches (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    launched_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+  )`).run();
+} catch {}
+
+// Rejestruj uruchomienie aplikacji
+try { db.prepare(`INSERT INTO app_launches (launched_at) VALUES (strftime('%s','now'))`).run(); } catch {}
+
 // ── Pomocnicze ──────────────────────────────────────────────────
 const AUDIO_EXT = new Set([
   '.mp3','.flac','.ogg','.wav','.aac','.m4a','.opus','.wma','.ape','.aiff','.aif',
@@ -145,6 +157,19 @@ async function parseFileMeta(filePath) {
     let replaygain = 0;
     const rg = meta.common.replaygain_track_gain;
     if (rg && typeof rg.dB === 'number') replaygain = rg.dB;
+
+    // Odczyt oceny z tagu POPM (ID3 Popularimeter) – konwersja 0-255 → 0-5 gwiazdek
+    let rating = 0;
+    const popm = meta.native?.['ID3v2.3']?.find?.(t => t.id === 'POPM')
+              || meta.native?.['ID3v2.4']?.find?.(t => t.id === 'POPM');
+    if (popm?.value?.rating) {
+      const v = popm.value.rating;
+      if      (v >= 220) rating = 5;
+      else if (v >= 168) rating = 4;
+      else if (v >= 115) rating = 3;
+      else if (v >= 52)  rating = 2;
+      else if (v >= 1)   rating = 1;
+    }
 
     return {
       title:      c.title        || path.basename(filePath, path.extname(filePath)),
@@ -234,16 +259,17 @@ async function scanPaths(paths) {
 
   const insertStmt = db.prepare(`
     INSERT OR IGNORE INTO songs
-      (id, path, title, artist, album, genre, year, duration, cover, lyrics, mtime, filesize, replaygain)
+      (id, path, title, artist, album, genre, year, duration, cover, lyrics, mtime, filesize, replaygain, rating)
     VALUES
-      (@id,@path,@title,@artist,@album,@genre,@year,@duration,@cover,@lyrics,@mtime,@filesize,@replaygain)
+      (@id,@path,@title,@artist,@album,@genre,@year,@duration,@cover,@lyrics,@mtime,@filesize,@replaygain,@rating)
   `);
 
   const updateStmt = db.prepare(`
     UPDATE songs SET
       title=@title, artist=@artist, album=@album, genre=@genre, year=@year,
       duration=@duration, cover=@cover, lyrics=@lyrics,
-      mtime=@mtime, filesize=@filesize, replaygain=@replaygain
+      mtime=@mtime, filesize=@filesize, replaygain=@replaygain,
+      rating=CASE WHEN @rating > 0 THEN @rating ELSE rating END
     WHERE id=@id
   `);
 
@@ -352,6 +378,12 @@ app.use(bodyParser.json());
 app.use('/covers', express.static(COVERS_DIR, { maxAge: '7d' }));
 app.use('/icons', express.static(path.join(__dirname, 'resources', 'icons'), { maxAge: '30d' }));
 
+// GET /api/version
+app.get('/api/version', (_req, res) => {
+  const pkg = require('./package.json');
+  res.json({ version: pkg.version, name: pkg.productName || pkg.name });
+});
+
 // GET /api/library
 app.get('/api/library', (_req, res) => {
   try {
@@ -411,14 +443,89 @@ app.post('/api/favorite', (req, res) => {
   res.json({ id, isFavorite });
 });
 
-// GET /api/tags/lookup/:id  – wyszukaj metadane online (MusicBrainz + iTunes), bez zapisu
+// POST /api/rating  – ustaw ocenę 0-5, zapisz w tagu POPM (MP3)
+app.post('/api/rating', (req, res) => {
+  const { id, rating } = req.body;
+  if (!id) return res.status(400).json({ error: 'Brak id' });
+  const r = Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  db.prepare('UPDATE songs SET rating=? WHERE id=?').run(r, id);
+
+  // Zapis do tagu POPM w pliku MP3
+  const song = db.prepare('SELECT path FROM songs WHERE id=?').get(id);
+  if (song?.path?.toLowerCase().endsWith('.mp3')) {
+    try {
+      const id3 = require('node-id3');
+      // POPM: 0=brak, 1=1gwiazdka(1-51), 2=2(52-114), 3=3(115-167), 4=4(168-219), 5=5(220-255)
+      const popularimeterMap = [0, 32, 96, 140, 192, 255];
+      const popmValue = popularimeterMap[r] || 0;
+      if (popmValue > 0) {
+        id3.update({ popularimeter: { email: 'NeonPulse', rating: popmValue, counter: 0 } }, song.path);
+      } else {
+        // rating=0 – usuń tag POPM
+        const tags = id3.read(song.path);
+        delete tags.popularimeter;
+        id3.write(tags, song.path);
+      }
+    } catch (e) {
+      console.warn('[rating] Nie można zapisać POPM:', e.message);
+    }
+  }
+
+  sseEmit('rating_changed', { id, rating: r });
+  res.json({ id, rating: r });
+});
+
+// POST /api/bulk-tags  – edycja tagów wielu utworów naraz
+app.post('/api/bulk-tags', async (req, res) => {
+  const { ids, fields } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Brak ids' });
+
+  const allowed = ['title', 'artist', 'album', 'genre', 'year'];
+  const updates = Object.fromEntries(
+    Object.entries(fields || {}).filter(([k, v]) => allowed.includes(k) && v !== undefined && v !== '')
+  );
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'Brak pól do aktualizacji' });
+
+  const cols  = Object.keys(updates).map(k => `${k}=@${k}`).join(', ');
+  const stmt  = db.prepare(`UPDATE songs SET ${cols} WHERE id=@id`);
+  const updateMany = db.transaction((rows) => rows.forEach(row => stmt.run(row)));
+
+  try {
+    updateMany(ids.map(id => ({ ...updates, id })));
+
+    // Zapis tagów do pliku (tylko MP3 przez node-id3)
+    const id3 = (() => { try { return require('node-id3'); } catch { return null; } })();
+    if (id3) {
+      const songs = db.prepare(`SELECT id, path FROM songs WHERE id IN (${ids.map(() => '?').join(',')})`)
+        .all(...ids);
+      for (const song of songs) {
+        if (!song.path.toLowerCase().endsWith('.mp3')) continue;
+        try {
+          const tags = {};
+          if (updates.title)  tags.title  = updates.title;
+          if (updates.artist) tags.artist = updates.artist;
+          if (updates.album)  tags.album  = updates.album;
+          if (updates.genre)  tags.genre  = updates.genre;
+          if (updates.year)   tags.year   = String(updates.year);
+          id3.update(tags, song.path);
+        } catch {}
+      }
+    }
+
+    res.json({ ok: true, updated: ids.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 app.get('/api/tags/lookup/:id', async (req, res) => {
   const song = db.prepare('SELECT * FROM songs WHERE id = ?').get(req.params.id);
   if (!song) return res.status(404).json({ error: 'Brak utworu' });
 
   const https = require('https');
   const fetchJson = (url) => new Promise((resolve, reject) => {
-    const r = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (res2) => {
+    const r = https.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.6 (https://github.com/PaffcioStudio/neonpulse)' } }, (res2) => {
       if (res2.statusCode === 301 || res2.statusCode === 302) { fetchJson(res2.headers.location).then(resolve).catch(reject); return; }
       let data = '';
       res2.on('data', c => data += c);
@@ -662,12 +769,51 @@ app.get('/api/stats/unplayed', (req, res) => {
 
 // GET /api/stats/summary  – ogólne podsumowanie
 app.get('/api/stats/summary', (_req, res) => {
-  const totalPlays  = db.prepare('SELECT COUNT(*) as n FROM play_history').get().n;
-  const totalTime   = db.prepare('SELECT SUM(duration_played) as s FROM play_history').get().s || 0;
-  const uniqueSongs = db.prepare('SELECT COUNT(DISTINCT song_id) as n FROM play_history').get().n;
-  const todayPlays  = db.prepare("SELECT COUNT(*) as n FROM play_history WHERE played_at >= strftime('%s','now','start of day')").get().n;
-  const thisWeek    = db.prepare("SELECT COUNT(*) as n FROM play_history WHERE played_at >= strftime('%s','now','-7 days')").get().n;
-  res.json({ totalPlays, totalTime, uniqueSongs, todayPlays, thisWeek });
+  const totalPlays    = db.prepare('SELECT COUNT(*) as n FROM play_history').get().n;
+  const totalTime     = db.prepare('SELECT SUM(duration_played) as s FROM play_history').get().s || 0;
+  const uniqueSongs   = db.prepare('SELECT COUNT(DISTINCT song_id) as n FROM play_history').get().n;
+  const todayPlays    = db.prepare("SELECT COUNT(*) as n FROM play_history WHERE played_at >= strftime('%s','now','start of day')").get().n;
+  const thisWeek      = db.prepare("SELECT COUNT(*) as n FROM play_history WHERE played_at >= strftime('%s','now','-7 days')").get().n;
+  const totalSize     = db.prepare('SELECT SUM(filesize) as s FROM songs WHERE filesize > 0').get().s || 0;
+  const launchesToday = db.prepare("SELECT COUNT(*) as n FROM app_launches WHERE launched_at >= strftime('%s','now','start of day')").get().n;
+  const favoritesCount = db.prepare('SELECT COUNT(*) as n FROM favorites').get().n;
+  // Średnia sesja = łączny czas odtwarzania / liczba unikalnych dni
+  const daysWithPlays = db.prepare("SELECT COUNT(DISTINCT date(played_at,'unixepoch','localtime')) as n FROM play_history").get().n || 1;
+  const avgSessionLength = Math.round(totalTime / daysWithPlays);
+  res.json({ totalPlays, totalTime, uniqueSongs, todayPlays, thisWeek, totalSize, launchesToday, favoritesCount, avgSessionLength });
+});
+
+// GET /api/stats/artists?limit=25  – top artyści wg liczby odtworzeń
+app.get('/api/stats/artists', (req, res) => {
+  const limit = Math.min(100, parseInt(req.query.limit) || 25);
+  const rows = db.prepare(`
+    SELECT s.artist, COUNT(ph.id) as play_count, SUM(ph.duration_played) as total_time,
+           COUNT(DISTINCT s.id) as track_count
+    FROM play_history ph
+    JOIN songs s ON ph.song_id = s.id
+    WHERE s.artist IS NOT NULL AND s.artist != '' AND s.artist != 'Nieznany artysta'
+    GROUP BY s.artist
+    ORDER BY play_count DESC
+    LIMIT ?
+  `).all(limit);
+  res.json(rows);
+});
+
+// GET /api/stats/albums?limit=25  – top albumy wg liczby odtworzeń
+app.get('/api/stats/albums', (req, res) => {
+  const limit = Math.min(100, parseInt(req.query.limit) || 25);
+  const rows = db.prepare(`
+    SELECT s.album, s.artist, COUNT(ph.id) as play_count,
+           SUM(ph.duration_played) as total_time,
+           MAX(s.cover) as cover
+    FROM play_history ph
+    JOIN songs s ON ph.song_id = s.id
+    WHERE s.album IS NOT NULL AND s.album != '' AND s.album != 'Nieznany album'
+    GROUP BY s.album, s.artist
+    ORDER BY play_count DESC
+    LIMIT ?
+  `).all(limit);
+  res.json(rows);
 });
 
 // ── Last.fm Scrobbling ───────────────────────────────────────────────────────
@@ -690,7 +836,7 @@ async function lastfmCall(params, secret) {
       hostname: 'ws.audioscrobbler.com',
       path: '/2.0/',
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'NeonPulsePlayer/3.4' },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'NeonPulsePlayer/3.6' },
     }, res => {
       let data = '';
       res.on('data', c => data += c);
@@ -813,6 +959,28 @@ app.delete('/api/lastfm/config', (_req, res) => {
   res.json({ ok: true });
 });
 
+function parseVersionParts(version) {
+  if (!version) return null;
+  const match = String(version).trim().match(/^v?(\d+(?:\.\d+){0,3})/i);
+  if (!match) return null;
+  return match[1].split('.').map(n => Number.parseInt(n, 10));
+}
+
+function isVersionNewer(latest, current) {
+  const latestParts = parseVersionParts(latest);
+  const currentParts = parseVersionParts(current);
+  if (!latestParts || !currentParts) return false;
+
+  const length = Math.max(latestParts.length, currentParts.length);
+  for (let i = 0; i < length; i++) {
+    const latestPart = latestParts[i] || 0;
+    const currentPart = currentParts[i] || 0;
+    if (latestPart > currentPart) return true;
+    if (latestPart < currentPart) return false;
+  }
+  return false;
+}
+
 // GET /api/update/check  – sprawdź czy jest nowa wersja na GitHub
 app.get('/api/update/check', async (req, res) => {
   const pkg = require('./package.json');
@@ -837,7 +1005,7 @@ app.get('/api/update/check', async (req, res) => {
 
     // Wersja jest w tytule release'a (np. "3.5.0" lub "v3.5.0")
     const latest = (data.name || '').replace(/^v/, '').trim() || null;
-    const hasUpdate = latest && latest !== current;
+    const hasUpdate = isVersionNewer(latest, current);
 
     // Stałe URL-e do pobrania (bez wersji w nazwie)
     const BASE = 'https://github.com/PaffcioStudio/neonpulse/releases/download/release';
@@ -1015,7 +1183,7 @@ app.post('/api/covers/fetch/:id', async (req, res) => {
 
   const fetchJson = (url) => new Promise((resolve, reject) => {
     const lib = url.startsWith('https') ? https : http;
-    const r2 = lib.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (r) => {
+    const r2 = lib.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.6 (https://github.com/PaffcioStudio/neonpulse)' } }, (r) => {
       if (r.statusCode === 301 || r.statusCode === 302) {
         fetchJson(r.headers.location).then(resolve).catch(reject); return;
       }
@@ -1029,7 +1197,7 @@ app.post('/api/covers/fetch/:id', async (req, res) => {
 
   const fetchBinary = (url) => new Promise((resolve, reject) => {
     const lib = url.startsWith('https') ? https : http;
-    const r2 = lib.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.4 (https://github.com/paffciostudio/neonpulse)' } }, (r) => {
+    const r2 = lib.get(url, { headers: { 'User-Agent': 'NeonPulsePlayer/3.6 (https://github.com/PaffcioStudio/neonpulse)' } }, (r) => {
       if (r.statusCode === 301 || r.statusCode === 302) {
         fetchBinary(r.headers.location).then(resolve).catch(reject); return;
       }

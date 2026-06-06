@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { ListOrdered, X, Volume2, GripVertical, Trash2 } from 'lucide-react';
 import { formatTime, getCoverSrc } from '../utils';
 
-export default function QueuePanel({ queue, queueIndex, currentSong, onSelect, onClose, onRemove, onReorder }) {
+export default function QueuePanel({ queue, queueIndex, currentSong, onSelect, onClose, onRemove, onReorder, animationsEnabled = true, isClosing = false }) {
   const dragIdx  = useRef(null);
   const [dragOver, setDragOver] = useState(null);
 
@@ -34,7 +34,9 @@ export default function QueuePanel({ queue, queueIndex, currentSong, onSelect, o
   };
 
   return (
-    <div className="absolute right-4 bottom-28 w-80 max-h-[28rem] bg-zinc-950/98 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col z-40 backdrop-blur animate-in slide-in-from-bottom-2 fade-in duration-200">
+    <div className={`absolute right-4 bottom-28 w-80 max-h-[28rem] bg-zinc-950/98 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col z-40 backdrop-blur ${
+      animationsEnabled ? (isClosing ? 'np-slide-up-exit' : 'np-slide-up-enter') : ''
+    }`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
         <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
           <ListOrdered size={14} />

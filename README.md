@@ -1,187 +1,158 @@
 <div align="center">
 
-<img src="resources/icons/neonpulse-player.png" width="120" alt="NeonPulse Player" />
+<img src="resources/icons/neonpulse-player.png" width="118" alt="NeonPulse Player" />
 
-# NEONPULSE PLAYER
+# NeonPulse Player
 
-**Lokalny odtwarzacz audio dla Linuksa z duszą**
+**Lokalny odtwarzacz muzyki dla Linuksa, z biblioteką SQLite, MPRIS i nowoczesnym UI.**
 
-[![Version](https://img.shields.io/badge/wersja-3.4.0-a855f7?style=flat-square)](https://github.com/paffciostudio/neonpulse/releases)
-[![Platform](https://img.shields.io/badge/platforma-Linux-blue?style=flat-square&logo=linux)](https://github.com/paffciostudio/neonpulse)
-[![Electron](https://img.shields.io/badge/Electron-28-47848f?style=flat-square&logo=electron)](https://electronjs.org)
-[![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react)](https://reactjs.org)
-[![SQLite](https://img.shields.io/badge/SQLite-3-003b57?style=flat-square&logo=sqlite)](https://sqlite.org)
-[![License](https://img.shields.io/badge/licencja-MIT-22c55e?style=flat-square)](LICENSE)
+[![Wersja](https://img.shields.io/badge/wersja-3.6.0-a855f7?style=for-the-badge)](package.json)
+[![Linux](https://img.shields.io/badge/Linux-DEB%20%7C%20AppImage-2563eb?style=for-the-badge&logo=linux&logoColor=white)](#instalacja)
+[![Electron](https://img.shields.io/badge/Electron-28-47848f?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
+[![React](https://img.shields.io/badge/React-18-61dafb?style=for-the-badge&logo=react&logoColor=111)](https://react.dev)
+[![SQLite](https://img.shields.io/badge/SQLite-biblioteka-003b57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org)
 
 </div>
 
 ---
 
-## 📸 Zrzuty ekranu
+## Zrzuty Ekranu
 
 <div align="center">
 
-<img src="screenshots/1.png" width="49%" alt="Teraz gramy z wizualizacją" />
-<img src="screenshots/2.png" width="49%" alt="Biblioteka i lista utworów" />
+<img src="screenshots/1.png" width="49%" alt="Ekran Teraz gramy" />
+<img src="screenshots/2.png" width="49%" alt="Biblioteka muzyki" />
 
-<img src="screenshots/3.png" width="49%" alt="Statystyki słuchania" />
-<img src="screenshots/4.png" width="49%" alt="Ustawienia i EQ" />
+<img src="screenshots/3.png" width="49%" alt="Widok odtwarzacza systemowego" />
+<img src="screenshots/4.png" width="49%" alt="Ustawienia aplikacji" />
 
 </div>
 
 ---
 
-## ✨ Funkcje
+## Najważniejsze Funkcje
 
-### 🎵 Odtwarzacz
-- Obsługa MP3, FLAC, OGG, WAV, AAC i innych popularnych formatów
-- **Crossfade** (2s) i **gapless playback** między utworami
-- **Fade-in** przy starcie odtwarzania
-- **ReplayGain** – automatyczna normalizacja głośności z metadanych
-- **10-pasmowy equalizer** z presetami
-- Przywracanie ostatniego utworu i pozycji po ponownym uruchomieniu
-- Zapamiętywanie kolejki między sesjami
+| Obszar | Co potrafi |
+| --- | --- |
+| Odtwarzanie | MP3, FLAC, OGG, WAV, AAC i inne formaty wspierane przez Chromium |
+| Kolejka | Kolejka i aktywny utwór są zapisywane między sesjami |
+| Przejścia | Gapless playback albo crossfade, z automatycznym wykluczaniem konfliktu |
+| Dźwięk | 10-pasmowy equalizer, szybki panel EQ, ReplayGain i fade-in |
+| System Linux | MPRIS v2, klawisze multimedialne, panel KDE/GNOME i tray |
+| Biblioteka | SQLite, live scan folderów, wyszukiwanie, sortowanie i widoki szczegółowe |
+| Metadane | Edycja tagów, zbiorcza edycja, oceny, okładki z MusicBrainz / Cover Art Archive |
+| Playlisty | Playlisty lokalne, smart playlisty, import M3U/PLS/XSPF i eksport M3U |
+| Teksty | Pliki `.lrc`, teksty embedded i synchronizacja z postępem utworu |
+| Last.fm | Scrobbling, now playing i przełącznik integracji w ustawieniach |
 
-### 📚 Biblioteka
-- Skanowanie folderów w czasie rzeczywistym (chokidar)
-- Baza danych SQLite – szybkie wyszukiwanie i filtrowanie
-- Widoki: wszystkie utwory, artyści, albumy, gatunki, dekady
-- **Smart playlisty** z regułami (rok, gatunek, ulubione, BPM)
-- **Edytor tagów ID3** – edycja tytułu, artysty, albumu, roku, gatunku
-- **Pobieranie okładek** z MusicBrainz / Cover Art Archive
-- Wykrywanie i usuwanie **duplikatów** (fizyczne usunięcie z dysku)
-- Oznaczanie i usuwanie **brakujących plików**
+---
 
-### 📋 Playlisty
-- Tworzenie, edycja i usuwanie list odtwarzania
-- Import: **M3U, PLS, XSPF**
-- Eksport do **M3U**
-- Trwałe przechowywanie w bazie SQLite
+## Interfejs
 
-### 📊 Statystyki
-- Historia odtworzeń zapisywana lokalnie
-- **Top 50** – najczęściej odtwarzane utwory
-- Wykres dzienny/tygodniowy/miesięczny słuchania
-- Lista **„Nie słuchane od dawna"**
-- Łączny czas słuchania
+- Widoki: `Teraz gramy`, `Wszystkie utwory`, `Ulubione`, artyści, albumy, gatunki, dekady, playlisty, statystyki, tekst utworu, duplikaty i brakujące pliki.
+- Dolny pasek odtwarzacza z okładką, tytułem, artystą, kolejką, wyłącznikiem czasowym i opcjonalnymi skrótami.
+- Kliknięcie okładki przechodzi do `Teraz gramy`, tytułu do albumu, a artysty do jego albumów.
+- Motywy kolorystyczne, ambient z okładki albumu, animacje przejść i tryb kompaktowy list.
+- Wizualizacje audio: `Mgławica`, `Słupy`, `Tunel` i `Zorza`, z opcjonalnym delikatnym prześwitem w tle widoków.
+- Pełnoekranowy widok odtwarzania z okładką, tekstem i kolejką.
 
-### 🎨 Interfejs
-- 10 motywów kolorystycznych (akcenty)
-- **Ambient color** – tło dopasowane do okładki albumu
-- **Wizualizacja audio** w rytm muzyki (FFT, fale, cząsteczki, okrąg spektrum)
-- **Mini player** – pływający widget 400×110px, przeciągany
-- Tryb kompaktowy listy utworów
-- Sortowanie po tytule, artyście, albumie, roku, czasie trwania
-- Animacje przejść widoków
+---
 
-### 🎤 Tekst utworu
-- Synchronizowane teksty z pliku `.lrc` (karaoke)
-- Tekst embedded w tagu USLT (ID3) / Vorbis Comment (FLAC)
-- Automatyczne wykrywanie – bez konfiguracji
+## Ustawienia I Automatyzacja
 
-### 🔗 Integracje
-- **MPRIS v2** – pełna obsługa klawiszy multimedialnych, panel systemowy KDE/GNOME
-- **Tray** z kontrolkami (play/pause, poprzedni/następny)
-- **Last.fm** – scrobbling i aktualizacja „teraz gra"
-- **Drag & Drop** – przeciągnij folder do okna
+- Automatyczne przywracanie ostatniego utworu, pozycji i kolejki.
+- Start zminimalizowany do traya, minimalizacja do traya i kontrolki w menu traya.
+- Konfigurowalne przyciski paska odtwarzacza: widok odtwarzania, equalizer i wyłącznik czasowy.
+- Wyłącznik czasowy z presetami i własnym limitem minut.
+- Aktualizacje sprawdzane z GitHub Releases.
+- Przeciąganie folderów do okna aplikacji dodaje je do biblioteki.
 
-### ⌨️ Skróty klawiszowe
+---
+
+## Skróty Klawiszowe
 
 | Skrót | Akcja |
-|-------|-------|
-| `Space` | Play / Pause |
-| `←` / `→` | Poprzedni / Następny utwór |
-| `Shift+←` / `Shift+→` | Cofnij / Przewiń o 10 sekund |
-| `↑` / `↓` | Głośność +/- |
-| `M` | Wycisz / Odcisz |
+| --- | --- |
+| `Space` | Play / pauza |
+| `←` / `→` | Poprzedni / następny utwór |
+| `Shift+←` / `Shift+→` | Cofnij / przewiń o 10 sekund |
+| `↑` / `↓` | Głośność w górę / w dół |
+| `M` | Wycisz / odcisz |
 | `S` | Shuffle |
 | `Ctrl+F` | Szukaj |
 
 ---
 
-## 🚀 Instalacja
+## Instalacja
 
-### Wymagania
-- **Node.js** 18+
-- **npm** 9+
-- Linux (testowany na Ubuntu 22.04, TuxedoOS)
+### Wymagania Deweloperskie
 
-### Uruchomienie w trybie deweloperskim
+- Linux
+- Node.js 18+
+- npm 9+
+
+### Uruchomienie Z Kodu
 
 ```bash
-git clone https://github.com/paffciostudio/neonpulse.git
+git clone https://github.com/PaffcioStudio/neonpulse.git
 cd neonpulse
 npm install
 npm start
 ```
 
-Aplikacja uruchamia jednocześnie serwer Express (port 3001) i Vite dev server (port 5173).
+`npm start` uruchamia Vite oraz aplikację Electron. Backend Express działa na porcie `3001`, a Vite na `5173`.
 
-### Budowanie paczki
+### Build
 
 ```bash
-# Paczka .deb (Debian/Ubuntu)
-npm run dist
-
-# AppImage (przenośny)
+npm run build
 npm run dist
 ```
 
-Gotowe paczki znajdziesz w katalogu `dist/`.
+`npm run build` tworzy frontend w katalogu `dist/`.
+`npm run dist` buduje paczki `.deb` i `AppImage` w katalogu `release/`.
 
 ---
 
-## 🗂️ Struktura projektu
+## Struktura Projektu
 
-```
+```text
 neonpulse/
-├── electron-main.js       # Główny proces Electron
-├── server.js              # Backend Express + SQLite API
+├── electron-main.js          # Electron, tray, MPRIS, okno aplikacji
+├── server.js                 # Express API, SQLite, skanowanie i integracje
 ├── src/
-│   ├── components/        # Komponenty React
-│   │   ├── views/         # Widoki (biblioteka, playlisty, statystyki…)
-│   │   ├── MusicPlayer.jsx
-│   │   ├── PlayerBar.jsx
-│   │   ├── Sidebar.jsx
-│   │   └── …
-│   ├── hooks/
-│   │   ├── usePlayer.js   # Logika odtwarzacza
-│   │   └── useLastFm.js   # Scrobbling Last.fm
-│   └── utils.js
-├── resources/
-│   └── icons/             # Ikony aplikacji
-└── screenshots/           # Zrzuty ekranu
+│   ├── components/           # Komponenty React
+│   ├── components/views/     # Widoki aplikacji
+│   ├── hooks/                # Logika odtwarzacza i Last.fm
+│   ├── ipc.js                # Bezpieczny most IPC
+│   └── utils.js              # Pomocnicze funkcje UI i biblioteki
+├── resources/                # Ikony i metadane linuksowe
+├── screenshots/              # Zrzuty ekranu do README
+└── scripts/                  # Instalacja i hooki paczek
 ```
 
 ---
 
-## 🛠️ Stack technologiczny
+## Stack
 
 | Technologia | Rola |
-|-------------|------|
-| **Electron 28** | Silnik aplikacji desktopowej |
-| **React 18** | Interfejs użytkownika |
-| **Vite 4** | Bundler i dev server |
-| **Tailwind CSS** | Style i layout |
-| **SQLite** (better-sqlite3) | Baza danych biblioteki |
-| **Express.js** | Backend REST API |
-| **music-metadata** | Odczyt tagów audio |
-| **chokidar** | Obserwowanie folderów |
-| **Web Audio API** | Wizualizacja i equalizer |
-| **MPRIS D-Bus** | Integracja z systemem Linux |
-| **Last.fm API** | Scrobbling |
-| **Lucide React** | Ikony |
+| --- | --- |
+| Electron 28 | Aplikacja desktopowa |
+| React 18 | Interfejs |
+| Vite 4 | Bundler |
+| Tailwind CSS | Style |
+| Express | Lokalne REST API |
+| SQLite / better-sqlite3 | Biblioteka, playlisty i statystyki |
+| music-metadata | Odczyt tagów audio |
+| node-id3 | Zapis tagów MP3 |
+| chokidar | Live scan folderów |
+| Web Audio API | Equalizer i wizualizacje |
+| MPRIS D-Bus | Integracja z systemem Linux |
+| Last.fm API | Scrobbling |
+| Lucide React | Ikony |
 
 ---
 
-## 📄 Licencja
+## Licencja
 
-MIT © [Paffcio](https://github.com/paffcio) 2026
-
----
-
-<div align="center">
-
-Zbudowane z ❤️ i muzyką w tle
-
-</div>
+MIT © Paffcio 2026

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Repeat1, Shuffle,
-         Volume2, VolumeX, ListOrdered, Minimize2, Maximize2, Moon } from 'lucide-react';
+         Volume2, VolumeX, ListOrdered, Maximize2, Moon, Star, SlidersHorizontal } from 'lucide-react';
 import { formatTime, formatTimeRemaining, getCoverSrc, COVER_PLACEHOLDER } from '../utils';
 import { REPEAT_MODES } from '../hooks/usePlayer';
 import HeartButton from './HeartButton';
@@ -9,9 +9,10 @@ export default function PlayerBar({
   currentSong, isPlaying, progress, volume, isMuted, repeatMode, isShuffle,
   queue, setIsMuted, setVolume, setIsShuffle, cycleRepeat,
   handlePlayPause, handleNext, handlePrev, seekTo, handleVolumeScroll,
-  onToggleFavorite, onShowQueue, isQueueOpen, onGoHome, displayList,
-  settings, onMiniPlayer, isMiniPlayer,
+  onToggleFavorite, onShowQueue, isQueueOpen, onGoHome, onGoAlbum, onGoArtist, displayList,
+  settings,
   onNowPlaying, isNowPlaying, onSleepTimer, sleepRemaining,
+  onRatingChange, onEqualizer, isEqualizerOpen,
 }) {
   const [showRemaining, setShowRemaining] = useState(false);
   const volumeWrapRef = useRef(null);
@@ -44,11 +45,19 @@ export default function PlayerBar({
             <div className="overflow-hidden">
               <h4
                 className="font-semibold text-sm truncate cursor-pointer hover:accent-text transition-colors leading-tight"
-                onClick={onGoHome}
+                onClick={onGoAlbum}
+                title={currentSong.album ? `Album: ${currentSong.album}` : 'Album'}
               >
                 {currentSong.title}
               </h4>
-              <p className="text-xs text-zinc-500 truncate mt-0.5">{currentSong.artist}</p>
+              <button
+                type="button"
+                className="block max-w-full text-xs text-zinc-500 truncate mt-0.5 hover:accent-text transition-colors text-left"
+                onClick={onGoArtist}
+                title={currentSong.artist ? `Artysta: ${currentSong.artist}` : 'Artysta'}
+              >
+                {currentSong.artist}
+              </button>
             </div>
             <HeartButton
               isFavorite={!!currentSong.isFavorite}
@@ -56,6 +65,30 @@ export default function PlayerBar({
               size={17}
               className="ml-1 flex-shrink-0"
             />
+            {/* Gwiazdki – ocena */}
+            <div className="hidden sm:flex items-center gap-0.5 ml-2 flex-shrink-0">
+              {[1,2,3,4,5].map(n => {
+                const filled = n <= (currentSong.rating || 0);
+                return (
+                  <button
+                    key={n}
+                    onClick={() => onRatingChange?.(currentSong.id, n === currentSong.rating ? 0 : n)}
+                    title={`${n} gwiazdka`}
+                    className="group/star relative transition-transform hover:scale-125 active:scale-95 duration-100"
+                    style={{ transition: 'transform 120ms cubic-bezier(0.34,1.56,0.64,1)' }}
+                  >
+                    <Star
+                      size={13}
+                      className={`transition-all duration-150 ${
+                        filled
+                          ? 'text-yellow-400 fill-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.6)]'
+                          : 'text-zinc-700 group-hover/star:text-zinc-400'
+                      }`}
+                    />
+                  </button>
+                );
+              })}
+            </div>
           </>
         ) : (
           <p className="text-xs text-zinc-700">Nic nie gra</p>
@@ -103,7 +136,9 @@ export default function PlayerBar({
             }}
           >
             <div
-              className="h-full accent-progress rounded-full relative pointer-events-none"
+              className={`h-full accent-progress rounded-full relative pointer-events-none ${
+                isPlaying && settings?.animationsEnabled ? 'progress-pulse' : ''
+              }`}
               style={{ width: `${progressPct}%`, willChange: 'width' }}
             >
               <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 shadow transition-opacity pointer-events-none" />
@@ -134,46 +169,52 @@ export default function PlayerBar({
         >
           <ListOrdered size={12} /> {queue.length}
         </button>
-        <button
-          onClick={onMiniPlayer}
-          title={isMiniPlayer ? 'Zamknij Mini Player' : 'Mini Player'}
-          className={`hidden md:flex p-2 rounded-full border transition-colors ${
-            isMiniPlayer
-              ? 'accent-border accent-text accent-bg'
-              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
-          }`}
-        >
-          <Minimize2 size={12} />
-        </button>
+        {(settings?.showBtnNowPlaying ?? false) && (
+          <button
+            onClick={onNowPlaying}
+            title={isNowPlaying ? 'Zamknij widok odtwarzania' : 'Widok odtwarzania'}
+            className={`hidden md:flex p-2 rounded-full border transition-colors ${
+              isNowPlaying
+                ? 'accent-border accent-text accent-bg'
+                : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
+            }`}
+          >
+            <Maximize2 size={12} />
+          </button>
+        )}
 
-        <button
-          onClick={onNowPlaying}
-          title={isNowPlaying ? 'Zamknij Now Playing' : 'Now Playing'}
-          className={`hidden md:flex p-2 rounded-full border transition-colors ${
-            isNowPlaying
-              ? 'accent-border accent-text accent-bg'
-              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
-          }`}
-        >
-          <Maximize2 size={12} />
-        </button>
+        {(settings?.showBtnSleepTimer ?? true) && (
+          <button
+            onClick={onSleepTimer}
+            title={sleepRemaining > 0 ? `Wyłącznik czasowy: ${Math.ceil(sleepRemaining / 60)} min` : 'Wyłącznik czasowy'}
+            className={`hidden md:flex p-2 rounded-full border transition-colors relative ${
+              sleepRemaining > 0
+                ? 'border-indigo-500/50 text-indigo-400 bg-indigo-500/10'
+                : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
+            }`}
+          >
+            <Moon size={12} />
+            {sleepRemaining > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-indigo-500 text-white rounded-full px-1 font-bold leading-tight">
+                {Math.ceil(sleepRemaining / 60)}
+              </span>
+            )}
+          </button>
+        )}
 
-        <button
-          onClick={onSleepTimer}
-          title={sleepRemaining > 0 ? `Sleep Timer: ${Math.ceil(sleepRemaining / 60)} min` : 'Sleep Timer'}
-          className={`hidden md:flex p-2 rounded-full border transition-colors relative ${
-            sleepRemaining > 0
-              ? 'border-indigo-500/50 text-indigo-400 bg-indigo-500/10'
-              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
-          }`}
-        >
-          <Moon size={12} />
-          {sleepRemaining > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-indigo-500 text-white rounded-full px-1 font-bold leading-tight">
-              {Math.ceil(sleepRemaining / 60)}
-            </span>
-          )}
-        </button>
+        {(settings?.showBtnEqualizer ?? true) && (
+          <button
+            onClick={onEqualizer}
+            title={isEqualizerOpen ? 'Zamknij equalizer' : 'Equalizer'}
+            className={`hidden md:flex p-2 rounded-full border transition-colors ${
+              isEqualizerOpen
+                ? 'accent-border accent-text accent-bg'
+                : 'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-white'
+            }`}
+          >
+            <SlidersHorizontal size={12} />
+          </button>
+        )}
 
         <div ref={volumeWrapRef} className="flex items-center gap-2">
           <button onClick={() => setIsMuted(m => !m)} className="text-zinc-500 hover:text-white transition-colors">

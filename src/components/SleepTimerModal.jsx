@@ -10,7 +10,7 @@ const PRESETS = [
   { label: '2 godz', value: 120 },
 ];
 
-export default function SleepTimerModal({ onClose, onSet, currentTimer }) {
+export default function SleepTimerModal({ onClose, onSet, currentTimer, animationsEnabled = true, isClosing = false }) {
   const [selected, setSelected] = useState(null);
   const [custom, setCustom] = useState('');
   const inputRef = useRef(null);
@@ -41,14 +41,16 @@ export default function SleepTimerModal({ onClose, onSet, currentTimer }) {
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative w-full max-w-sm bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl overflow-hidden">
+      <div className={`relative w-full max-w-sm bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl overflow-hidden ${
+        animationsEnabled ? (isClosing ? 'np-pop-exit' : 'np-pop-enter') : ''
+      }`}>
 
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-800">
           <div className="p-1.5 rounded-lg bg-indigo-500/15">
             <Moon size={15} className="text-indigo-400" />
           </div>
-          <span className="font-semibold text-white text-sm">Sleep Timer</span>
+          <span className="font-semibold text-white text-sm">Wyłącznik czasowy</span>
           <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors">
             <X size={15} />
           </button>
@@ -86,18 +88,24 @@ export default function SleepTimerModal({ onClose, onSet, currentTimer }) {
               ref={inputRef}
               type="number" min="1" max="600"
               value={custom}
-              onChange={e => { setCustom(e.target.value); setSelected('custom'); }}
+              onChange={e => {
+                const raw = e.target.value;
+                if (raw === '') { setCustom(''); setSelected('custom'); return; }
+                const next = Math.max(1, Math.min(600, Number(raw) || 1));
+                setCustom(String(next));
+                setSelected('custom');
+              }}
               placeholder="minuty"
-              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition-colors"
+              className="number-clean flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition-colors"
             />
             <span className="text-xs text-zinc-600 flex-shrink-0">min</span>
           </div>
 
-          {/* Aktywny timer info */}
+          {/* Informacja o aktywnym wyłączniku */}
           {currentTimer > 0 && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs">
               <Timer size={12} className="flex-shrink-0" />
-              Aktywny timer: {Math.ceil(currentTimer / 60)} min pozostało
+              Wyłącznik aktywny, pozostało {Math.ceil(currentTimer / 60)} min
             </div>
           )}
         </div>
@@ -113,7 +121,7 @@ export default function SleepTimerModal({ onClose, onSet, currentTimer }) {
             className="px-4 py-2 rounded-xl text-sm text-zinc-400 hover:text-white hover:bg-white/10 transition-colors">
             Zamknij
           </button>
-          <button onClick={handleSet} disabled={!selected || (selected === 'custom' && !custom)}
+          <button onClick={handleSet} disabled={!selected || (selected === 'custom' && (!custom || Number(custom) < 1 || Number(custom) > 600))}
             className="px-4 py-2 rounded-xl text-sm font-semibold accent-gradient text-white disabled:opacity-40 flex items-center gap-1.5 transition-opacity">
             <CheckCircle2 size={13} /> Ustaw
           </button>

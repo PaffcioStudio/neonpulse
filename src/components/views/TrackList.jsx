@@ -1,23 +1,35 @@
-import React, { useCallback, memo, useState, useMemo } from 'react';
-import { Play, Volume2, Heart, MoreVertical, Music2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import React, { useCallback, memo, useState, useMemo, useEffect, useRef } from 'react';
+import { Play, Volume2, Heart, MoreVertical, Music2, ChevronUp, ChevronDown, ChevronsUpDown, Star, Tag } from 'lucide-react';
 import { formatTime, getCoverSrc, COVER_PLACEHOLDER } from '../../utils';
 
-const TrackRow = memo(function TrackRow({ song, index, isCurrent, isPlaying, compact, onPlay, onFavorite, onContextMenu }) {
+const TrackRow = memo(function TrackRow({ song, index, isCurrent, isPlaying, compact, selected, onPlay, onFavorite, onContextMenu, onSelect, rowRef }) {
   return (
     <div
-      className={`flex items-center gap-3 px-3 rounded-lg cursor-pointer group transition-colors border ${
+      ref={rowRef}
+      className={`relative flex items-center gap-3 px-3 rounded-lg cursor-pointer group transition-all border ${
         compact ? 'py-1.5' : 'py-2.5'
       } ${
-        isCurrent
+        selected
+          ? 'bg-white/[0.055] border-accent/45 shadow-[inset_3px_0_0_var(--accent-from)]'
+          : isCurrent
           ? 'bg-white/[0.05] border-white/[0.08] accent-border-subtle'
           : 'border-transparent hover:bg-white/[0.04] hover:border-white/[0.04]'
       }`}
-      onClick={onPlay}
+      onClick={e => {
+        if (e.ctrlKey || e.metaKey || e.shiftKey) { e.preventDefault(); onSelect?.(); }
+        else onPlay();
+      }}
       onContextMenu={onContextMenu}
     >
-      {/* Numer / play indicator */}
+      {/* Numer / play / checkbox */}
       <div className="w-7 text-center flex-shrink-0 flex items-center justify-center">
-        {isCurrent && isPlaying ? (
+        {selected ? (
+          <div className="w-4 h-4 rounded-md accent-gradient flex items-center justify-center shadow-[0_0_10px_var(--accent-glow)]">
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+              <path d="M1.5 4l2 2 3-3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        ) : isCurrent && isPlaying ? (
           <Volume2 size={13} className="accent-text animate-pulse" />
         ) : isCurrent ? (
           <Volume2 size={13} className="accent-text opacity-60" />
@@ -44,6 +56,14 @@ const TrackRow = memo(function TrackRow({ song, index, isCurrent, isPlaying, com
         <div className={`font-medium truncate ${isCurrent ? 'accent-text' : 'text-white'} ${compact ? 'text-xs' : 'text-sm'}`}>
           {song.title || song.path?.split('/').pop()}
         </div>
+        {/* Gwiazdki – tylko gdy rating > 0 */}
+        {song.rating > 0 && (
+          <div className="flex gap-px mt-0.5">
+            {[1,2,3,4,5].map(n => (
+              <Star key={n} size={8} className={n <= song.rating ? 'text-yellow-400 fill-yellow-400' : 'text-zinc-800'} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Artysta */}
@@ -97,8 +117,11 @@ function SortHeader({ label, field, sort, onSort, className = '' }) {
   );
 }
 
-export default function TrackList({ songs, currentSong, isPlaying, compact, onPlay, onFavorite, onContextMenu, emptyMessage, showSort = true }) {
+export default function TrackList({ songs, currentSong, isPlaying, compact, onPlay, onFavorite, onContextMenu, emptyMessage, showSort = true, onBulkEdit, autoScrollCurrent = false, animationsEnabled = true }) {
   const [sort, setSort] = useState({ field: null, dir: 'asc' });
+  const [selected, setSelected] = useState(new Set());
+  const currentRowRef = useRef(null);
+  const didAutoScrollRef = useRef(false);
 
   const handleSort = (field) => {
     setSort(prev =>
@@ -122,7 +145,33 @@ export default function TrackList({ songs, currentSong, isPlaying, compact, onPl
     });
   }, [songs, sort]);
 
-  const handlePlay = useCallback((song) => onPlay(song), [onPlay]);
+  const toggleSelect = useCallback((id) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearSelection = () => setSelected(new Set());
+  const selectedSongs = sorted.filter(s => selected.has(s.id));
+
+  useEffect(() => {
+    if (!autoScrollCurrent || !currentSong?.id || didAutoScrollRef.current) return;
+    if (!sorted.some(s => s.id === currentSong.id)) return;
+    didAutoScrollRef.current = true;
+    setTimeout(() => {
+      currentRowRef.current?.scrollIntoView({
+        block: 'center',
+        behavior: animationsEnabled ? 'smooth' : 'auto',
+      });
+    }, 80);
+  }, [autoScrollCurrent, currentSong?.id, sorted, animationsEnabled]);
+
+  const handlePlay = useCallback((song) => {
+    setSelected(new Set());
+    onPlay(song);
+  }, [onPlay]);
 
   if (songs.length === 0) {
     return (
@@ -135,6 +184,20 @@ export default function TrackList({ songs, currentSong, isPlaying, compact, onPl
 
   return (
     <div>
+      {/* Pasek zaznaczenia wielu */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 px-3 py-2 mb-2 bg-zinc-900/80 border border-accent/35 rounded-xl text-xs shadow-[0_0_18px_rgba(0,0,0,0.25)]">
+          <span className="accent-text font-semibold">{selected.size} zaznaczonych</span>
+          <button onClick={() => onBulkEdit?.(selectedSongs)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg accent-gradient text-white font-medium">
+            <Tag size={11} /> Edytuj tagi
+          </button>
+          <button onClick={clearSelection} className="ml-auto text-zinc-500 hover:text-zinc-300 transition-colors">
+            Anuluj
+          </button>
+        </div>
+      )}
+
       {showSort && (
         <div className="flex items-center gap-3 px-3 pb-2 border-b border-zinc-800/50 mb-1">
           <div className="w-7 flex-shrink-0" />
@@ -152,6 +215,7 @@ export default function TrackList({ songs, currentSong, isPlaying, compact, onPl
           <div className="w-14 flex-shrink-0" />
         </div>
       )}
+      <p className="text-[10px] text-zinc-700 px-3 mb-1">Ctrl+klik aby zaznaczyć wiele</p>
       <div className="space-y-0.5">
         {sorted.map((song, i) => (
           <TrackRow
@@ -161,9 +225,12 @@ export default function TrackList({ songs, currentSong, isPlaying, compact, onPl
             isCurrent={currentSong?.id === song.id}
             isPlaying={isPlaying}
             compact={compact}
+            selected={selected.has(song.id)}
+            rowRef={currentSong?.id === song.id ? currentRowRef : null}
             onPlay={() => handlePlay(song)}
             onFavorite={() => onFavorite(song.id)}
             onContextMenu={e => onContextMenu(e, song)}
+            onSelect={() => toggleSelect(song.id)}
           />
         ))}
       </div>
