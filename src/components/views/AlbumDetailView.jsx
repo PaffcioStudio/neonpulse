@@ -1,9 +1,11 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Play, Shuffle, ArrowLeft } from 'lucide-react';
 import { getCoverSrc, COVER_PLACEHOLDER, pluralTracks, formatTime } from '../../utils';
 import TrackList from './TrackList';
 
 export default function AlbumDetailView({ album, songs, currentSong, isPlaying, compact, onPlay, onBack, onFavorite, onContextMenu }) {
+  const { t } = useTranslation(['common', 'library']);
   const cover = getCoverSrc(songs[0]?.cover);
   const totalDuration = songs.reduce((acc, s) => acc + (s.duration || 0), 0);
   const year = songs[0]?.year;
@@ -11,7 +13,7 @@ export default function AlbumDetailView({ album, songs, currentSong, isPlaying, 
   return (
     <div className="p-6">
       <button onClick={onBack} className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors mb-5 text-sm">
-        <ArrowLeft size={16} /> Wszystkie albumy
+        <ArrowLeft size={16} /> {t('allAlbums', { ns: 'library' })}
       </button>
 
       {/* Hero albumu */}
@@ -28,18 +30,18 @@ export default function AlbumDetailView({ album, songs, currentSong, isPlaying, 
           />
         </div>
         <div className="flex-1 min-w-0 pb-1">
-          <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Album</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">{t('albumLabel', { ns: 'library' })}</p>
           <h1 className="text-3xl md:text-5xl font-black leading-tight">{album}</h1>
           <p className="text-sm text-zinc-400 mt-1 font-medium">{songs[0]?.artist}</p>
           <p className="text-xs text-zinc-600 mt-0.5">
-            {year > 0 ? `${year} • ` : ''}{pluralTracks(songs.length)} • {formatTime(totalDuration)}
+            {year > 0 ? `${year} • ` : ''}{pluralTracks(songs.length, t)} • {formatTime(totalDuration)}
           </p>
           <div className="flex gap-2 mt-4">
             <button
               onClick={() => onPlay(songs[0], songs)}
               className="flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold accent-gradient hover:opacity-90 shadow-md transition-all"
             >
-              <Play size={14} className="ml-0.5" /> Odtwórz
+              <Play size={14} className="ml-0.5" /> {t('play', { ns: 'common' })}
             </button>
             <button
               onClick={() => {
@@ -48,7 +50,7 @@ export default function AlbumDetailView({ album, songs, currentSong, isPlaying, 
               }}
               className="flex items-center gap-2 px-5 py-2 rounded-full bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold transition-colors"
             >
-              <Shuffle size={14} /> Losowo
+              <Shuffle size={14} /> {t('shufflePlay', { ns: 'common' })}
             </button>
           </div>
         </div>

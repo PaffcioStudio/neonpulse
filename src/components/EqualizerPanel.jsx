@@ -1,17 +1,18 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SlidersHorizontal, RotateCcw } from 'lucide-react';
 
 const PRESETS = {
-  'Płaski':       [ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
-  'Bass Boost':   [+8, +6, +4, +2,  0,  0,  0,  0,  0,  0],
-  'Treble Boost': [ 0,  0,  0,  0,  0, +2, +4, +6, +7, +8],
-  'V-Shape':      [+6, +4, +1, -2, -4, -4, -2, +1, +4, +6],
-  'Vocal':        [-2, -2,  0, +4, +6, +5, +4,  0, -2, -2],
-  'Rock':         [+5, +3,  0, -2, -2,  0, +3, +5, +6, +6],
-  'Jazz':         [+4, +2,  0, +3, +4, +3,  0,  0,  0,  0],
-  'Pop':          [-2, +2, +4, +5, +4, +3, +2,  0, -1, -2],
-  'Electronic':   [+5, +4, +1,  0, -3, +2, +1, +3, +5, +6],
-  'Classical':    [+4, +3, +2,  0,  0,  0,  0, -2, -3, -4],
+  flat:        [ 0,  0,  0,  0,  0,  0,  0,  0,  0,  0],
+  bassBoost:   [+8, +6, +4, +2,  0,  0,  0,  0,  0,  0],
+  trebleBoost: [ 0,  0,  0,  0,  0, +2, +4, +6, +7, +8],
+  vShape:      [+6, +4, +1, -2, -4, -4, -2, +1, +4, +6],
+  vocal:       [-2, -2,  0, +4, +6, +5, +4,  0, -2, -2],
+  rock:        [+5, +3,  0, -2, -2,  0, +3, +5, +6, +6],
+  jazz:        [+4, +2,  0, +3, +4, +3,  0,  0,  0,  0],
+  pop:         [-2, +2, +4, +5, +4, +3, +2,  0, -1, -2],
+  electronic:  [+5, +4, +1,  0, -3, +2, +1, +3, +5, +6],
+  classical:   [+4, +3, +2,  0,  0,  0,  0, -2, -3, -4],
 };
 
 const BAND_LABELS = ['32', '64', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
@@ -131,6 +132,7 @@ function EqBand({ gain, index, onChange }) {
 }
 
 export default function EqualizerPanel({ eqFiltersRef, setEqGain, EQ_FREQS }) {
+  const { t } = useTranslation(['player', 'common']);
   const [gains, setGains] = useState(() => {
     try {
       const saved = localStorage.getItem('neonpulse_eq_gains');
@@ -143,7 +145,11 @@ export default function EqualizerPanel({ eqFiltersRef, setEqGain, EQ_FREQS }) {
   });
 
   const [activePreset, setActivePreset] = useState(() => {
-    try { return localStorage.getItem('neonpulse_eq_preset') || 'Płaski'; } catch { return 'Płaski'; }
+    try {
+      const saved = localStorage.getItem('neonpulse_eq_preset') || 'flat';
+      const legacy = { 'Płaski': 'flat', 'Bass Boost': 'bassBoost', 'Treble Boost': 'trebleBoost', 'V-Shape': 'vShape', 'Vocal': 'vocal', 'Rock': 'rock', 'Jazz': 'jazz', 'Pop': 'pop', 'Electronic': 'electronic', 'Classical': 'classical' };
+      return legacy[saved] || (PRESETS[saved] ? saved : 'flat');
+    } catch { return 'flat'; }
   });
 
   // Zastosuj zapisane wzmocnienia do filtrów audio przy montowaniu panelu
@@ -177,16 +183,16 @@ export default function EqualizerPanel({ eqFiltersRef, setEqGain, EQ_FREQS }) {
     applyGains([...PRESETS[name]], name);
   };
 
-  const reset = () => applyPreset('Płaski');
+  const reset = () => applyPreset('flat');
 
   return (
     <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 select-none">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <SlidersHorizontal size={15} className="accent-text" />
-          <span className="text-sm font-bold uppercase tracking-widest text-zinc-300">Equalizer</span>
+          <span className="text-sm font-bold uppercase tracking-widest text-zinc-300">{t('equalizer', { ns: 'player' })}</span>
         </div>
-        <button onClick={reset} className="text-zinc-600 hover:text-zinc-300 transition-colors" title="Resetuj">
+        <button onClick={reset} className="text-zinc-600 hover:text-zinc-300 transition-colors" title={t('equalizerReset', { ns: 'player' })}>
           <RotateCcw size={14} />
         </button>
       </div>
@@ -203,7 +209,7 @@ export default function EqualizerPanel({ eqFiltersRef, setEqGain, EQ_FREQS }) {
                 : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:border-zinc-600'
             }`}
           >
-            {name}
+            {t(`presetLabels.${name}`, { ns: 'player' })}
           </button>
         ))}
       </div>
@@ -215,7 +221,7 @@ export default function EqualizerPanel({ eqFiltersRef, setEqGain, EQ_FREQS }) {
         ))}
       </div>
 
-      <p className="text-[10px] text-zinc-700 text-center mt-3">Hz — zakres ±12 dB</p>
+      <p className="text-[10px] text-zinc-700 text-center mt-3">{t('equalizerRange', { ns: 'player' })}</p>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronDown, Heart, Shuffle, SkipBack, Play, Pause,
   SkipForward, Repeat, Repeat1, Volume2, VolumeX,
@@ -39,6 +40,7 @@ export default function NowPlayingView({
   onSleepTimer, sleepRemaining,
   audioRef, animationsEnabled = true, isClosing = false,
 }) {
+  const { t } = useTranslation(['player', 'common', 'modals']);
   const [tab, setTab] = useState('cover'); // cover | lyrics | queue
   const [lyrics, setLyrics] = useState(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -156,9 +158,9 @@ export default function NowPlayingView({
         {/* Tabs */}
         <div className="flex gap-1 bg-white/5 rounded-xl p-1">
           {[
-            { id: 'cover',  icon: null,       label: 'Teraz' },
-            { id: 'lyrics', icon: Mic2,        label: 'Tekst' },
-            { id: 'queue',  icon: ListOrdered, label: 'Kolejka' },
+            { id: 'cover',  icon: null,       label: t('nowTab', { ns: 'player' }) },
+            { id: 'lyrics', icon: Mic2,        label: t('lyricsTab', { ns: 'player' }) },
+            { id: 'queue',  icon: ListOrdered, label: t('queueTab', { ns: 'player' }) },
           ].map(({ id, label }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -170,7 +172,7 @@ export default function NowPlayingView({
         </div>
 
         <button onClick={() => onSleepTimer?.()}
-          title="Wyłącznik czasowy"
+          title={t('sleepTimer', { ns: 'player' })}
           className={`p-2 rounded-xl transition-colors relative ${
             sleepRemaining > 0 ? 'text-indigo-400 bg-indigo-400/10' : 'text-zinc-600 hover:text-zinc-300 hover:bg-white/10'
           }`}>
@@ -196,7 +198,7 @@ export default function NowPlayingView({
               <img
                 src={cover || COVER_PLACEHOLDER(280)}
                 onError={e => { e.target.src = COVER_PLACEHOLDER(280); }}
-                alt="okładka"
+                alt={t('coverAlt', { ns: 'modals' })}
                 className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-3xl object-cover shadow-2xl border border-white/10"
                 style={{ boxShadow: `0 24px 60px ${ambientColor}` }}
               />
@@ -206,7 +208,7 @@ export default function NowPlayingView({
             <div className="w-full flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-xl font-black text-white truncate leading-tight">
-                  {currentSong?.title || 'Nic nie gra'}
+                  {currentSong?.title || t('nothingPlaying', { ns: 'player' })}
                 </h2>
                 <p className="text-zinc-400 text-sm mt-1 truncate">
                   {currentSong?.artist || ''}
@@ -300,12 +302,12 @@ export default function NowPlayingView({
           <div ref={lyricsContainerRef}
             className="flex-1 w-full max-w-lg overflow-y-auto custom-scrollbar py-4 space-y-1">
             {lyricsLoading && (
-              <div className="text-center text-zinc-600 py-16 text-sm">Ładuję tekst…</div>
+              <div className="text-center text-zinc-600 py-16 text-sm">{t('lyricsLoading', { ns: 'player' })}</div>
             )}
             {!lyricsLoading && !lrcParsed && !lyrics && (
               <div className="text-center text-zinc-700 py-16">
                 <Mic2 size={40} className="mx-auto mb-3 opacity-20" />
-                <p className="text-sm">Brak tekstu dla tego utworu</p>
+                <p className="text-sm">{t('noLyricsForTrack', { ns: 'player' })}</p>
               </div>
             )}
             {/* LRC z podświetleniem */}
@@ -339,7 +341,7 @@ export default function NowPlayingView({
             {queue.length === 0 ? (
               <div className="text-center text-zinc-700 py-16">
                 <ListOrdered size={40} className="mx-auto mb-3 opacity-20" />
-                <p className="text-sm">Kolejka jest pusta</p>
+                <p className="text-sm">{t('queueEmpty', { ns: 'player' })}</p>
               </div>
             ) : queue.map((song, i) => {
               const isCurrent = song.id === currentSong?.id;

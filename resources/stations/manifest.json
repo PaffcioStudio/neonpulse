@@ -1,0 +1,62 @@
+{
+  "//": "Manifest predefiniowanych stacji radiowych NeonPulse. Ten plik trafia do paczki deb/AppImage (poza asar, w resources/stations/manifest.json) i może być edytowany po instalacji bez rebuildu. Użytkownik może ukryć dowolną stację z poziomu aplikacji - ukrycia zapisywane są osobno i nie modyfikują tego pliku. Adresy to bezpośrednie strumienie audio (nie playlisty .pls/.m3u), zweryfikowane pod kątem najpopularniejszych ogólnopolskich stacji FM (2026).",
+  "version": 2,
+  "stations": [
+    {
+      "id": "radio-357",
+      "name": "Radio 357",
+      "url": "https://stream.rcs.revma.com/an1ugyygzk8uv",
+      "genre": "Rock/Pop",
+      "type": "icecast",
+      "favicon": ""
+    },
+    {
+      "id": "rmf-fm",
+      "name": "RMF FM",
+      "url": "http://195.150.20.242:8000/rmf_fm",
+      "genre": "Pop/Hity",
+      "type": "icecast",
+      "favicon": ""
+    },
+    {
+      "id": "rmf-maxxx",
+      "name": "RMF MAXXX",
+      "url": "https://rs6-krk2.rmfstream.pl/rmf_maxxx",
+      "genre": "Dance/Pop",
+      "type": "icecast",
+      "favicon": ""
+    },
+    {
+      "id": "radio-eska",
+      "name": "Radio Eska",
+      "url": "http://ic1.smcdn.pl/2380-1.mp3",
+      "genre": "Pop/Hity",
+      "type": "icecast",
+      "favicon": ""
+    },
+    {
+      "id": "eska-rock",
+      "name": "Radio Eska Rock",
+      "url": "http://ic1.smcdn.pl/5380-1.mp3",
+      "genre": "Rock",
+      "type": "icecast",
+      "favicon": ""
+    },
+    {
+      "id": "antyradio",
+      "name": "AntyRadio",
+      "url": "https://an.cdn.eurozet.pl/ant-waw.mp3",
+      "genre": "Rock",
+      "type": "icecast",
+      "favicon": ""
+    },
+    {
+      "id": "chillizet",
+      "name": "Radio Chilli ZET",
+      "url": "https://ch01.cdn.eurozet.pl/chi-net.mp3",
+      "genre": "Chillout/Pop",
+      "type": "icecast",
+      "favicon": ""
+    }
+  ]
+}

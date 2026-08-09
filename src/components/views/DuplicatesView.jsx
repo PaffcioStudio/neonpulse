@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Copy, Trash2, RefreshCw, CheckSquare, Square, ChevronDown, ChevronRight } from 'lucide-react';
 import { getCoverSrc, COVER_PLACEHOLDER } from '../../utils';
 
@@ -17,6 +18,7 @@ function formatSize(bytes) {
 }
 
 export default function DuplicatesView({ onLibraryChange }) {
+  const { t } = useTranslation(['library', 'common']);
   const [groups,      setGroups]      = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [expanded,    setExpanded]    = useState(new Set());
@@ -83,9 +85,9 @@ export default function DuplicatesView({ onLibraryChange }) {
       {/* Header */}
       <div className="flex items-center gap-3 px-6 pt-6 pb-4">
         <Copy size={18} className="text-accent" />
-        <h2 className="text-lg font-bold text-white">Duplikaty</h2>
+        <h2 className="text-lg font-bold text-white">{t('duplicatesView.title', { ns: 'library' })}</h2>
         <span className="ml-1 text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">
-          {groups.length} grup · {totalDupes} duplikatów
+          {t('duplicatesView.groupsAndDupes', { ns: 'library', groups: groups.length, dupes: totalDupes })}
         </span>
         <button onClick={load}
           className="ml-auto p-2 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors">
@@ -96,29 +98,29 @@ export default function DuplicatesView({ onLibraryChange }) {
       {done && (
         <div className="mx-6 mb-3 px-3 py-2 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-xs flex items-center gap-2">
           <CheckSquare size={13} />
-          Usunięto {done.removed} {done.removed === 1 ? 'utwór' : 'utwory'} z dysku i biblioteki
+          {t('duplicatesView.removed', { ns: 'library', count: done.removed, unit: done.removed === 1 ? t('duplicatesView.songOne', { ns: 'library' }) : t('duplicatesView.songMany', { ns: 'library' }) })}
         </div>
       )}
 
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm">
-          <RefreshCw size={16} className="animate-spin mr-2" /> Szukam duplikatów…
+          <RefreshCw size={16} className="animate-spin mr-2" /> {t('duplicatesView.searching', { ns: 'library' })}
         </div>
       ) : groups.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-600">
           <Copy size={40} className="opacity-30" />
-          <p className="text-sm">Brak duplikatów w bibliotece</p>
+          <p className="text-sm">{t('duplicatesView.none', { ns: 'library' })}</p>
         </div>
       ) : (
         <>
           {/* Toolbar */}
           <div className="flex items-center gap-3 px-6 pb-3">
             <p className="text-xs text-zinc-500">
-              Zaznaczone zostaną usunięte. Pierwszy wpis w grupie jest zachowany domyślnie.
+              {t('duplicatesView.toolbarInfo', { ns: 'library' })}
             </p>
             <div className="ml-auto flex items-center gap-2">
               {selected.size > 0 && (
-                <span className="text-xs text-zinc-500">{selected.size} zaznaczonych</span>
+                <span className="text-xs text-zinc-500">{t('selectedCount', { ns: 'common', count: selected.size })}</span>
               )}
               <button
                 onClick={handleDeleteClick}
@@ -126,7 +128,7 @@ export default function DuplicatesView({ onLibraryChange }) {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30
                            text-red-400 hover:text-red-300 text-xs font-medium disabled:opacity-40 transition-colors">
                 <Trash2 size={12} />
-                {deleting ? 'Usuwam…' : 'Usuń zaznaczone'}
+                {deleting ? t('duplicatesView.deleting', { ns: 'library' }) : t('duplicatesView.deleteSelected', { ns: 'library' })}
               </button>
             </div>
           </div>
@@ -143,7 +145,7 @@ export default function DuplicatesView({ onLibraryChange }) {
                     ? <ChevronDown size={13} className="text-zinc-500 flex-shrink-0" />
                     : <ChevronRight size={13} className="text-zinc-500 flex-shrink-0" />}
                   <span className="text-sm font-semibold text-white truncate">{group.key}</span>
-                  <span className="ml-auto text-xs text-zinc-500 flex-shrink-0">{group.songs.length} wersji</span>
+                  <span className="ml-auto text-xs text-zinc-500 flex-shrink-0">{t('duplicatesView.versions', { ns: 'library', count: group.songs.length })}</span>
                 </button>
 
                 {expanded.has(group.key) && (
@@ -180,7 +182,7 @@ export default function DuplicatesView({ onLibraryChange }) {
                           {i === 0 && (
                             <span className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium
                               ${isSelected ? 'bg-zinc-700 text-zinc-500' : 'bg-green-500/20 text-green-400'}`}>
-                              {isSelected ? 'usuwasz' : 'zachowaj'}
+                              {isSelected ? t('duplicatesView.deletingLabel', { ns: 'library' }) : t('duplicatesView.keepLabel', { ns: 'library' })}
                             </span>
                           )}
                         </div>
@@ -203,29 +205,29 @@ export default function DuplicatesView({ onLibraryChange }) {
                 <Trash2 size={16} className="text-red-400" />
               </div>
               <h3 className="text-white font-semibold text-base">
-                Usunąć {selected.size} {selected.size === 1 ? 'utwór' : 'utwory'}?
+                {t('duplicatesView.confirmTitle', { ns: 'library', count: selected.size, unit: selected.size === 1 ? t('duplicatesView.songOne', { ns: 'library' }) : t('duplicatesView.songMany', { ns: 'library' }) })}
               </h3>
             </div>
             <p className="text-zinc-400 text-sm mb-1">
-              Zaznaczone pliki zostaną trwale usunięte{' '}
-              <span className="text-red-400 font-medium">z dysku</span> — tej operacji nie można cofnąć.
+              {t('duplicatesView.confirmTextPrefix', { ns: 'library' })}
+              <span className="text-red-400 font-medium">{t('duplicatesView.confirmTextDisk', { ns: 'library' })}</span>{t('duplicatesView.confirmTextSuffix', { ns: 'library' })}
             </p>
             <p className="text-zinc-600 text-xs mb-5">
-              Wpisy zostaną również usunięte z biblioteki i ulubionych.
+              {t('duplicatesView.confirmSubtext', { ns: 'library' })}
             </p>
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setConfirmOpen(false)}
                 className="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
               >
-                Anuluj
+                {t('cancel', { ns: 'common' })}
               </button>
               <button
                 onClick={handleDelete}
                 className="px-4 py-2 rounded-lg text-sm bg-red-600/30 hover:bg-red-600/50 text-red-300 hover:text-red-200 font-medium transition-colors flex items-center gap-1.5"
               >
                 <Trash2 size={13} />
-                Usuń z dysku
+                {t('duplicatesView.deleteFromDisk', { ns: 'library' })}
               </button>
             </div>
           </div>

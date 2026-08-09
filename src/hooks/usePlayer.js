@@ -25,6 +25,23 @@ function save(key, val) {
 // Tworzymy drugi element audio wyłącznie do przeładowania/fade-out
 const CROSSFADE_SEC = 2;
 
+const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 'http:')
+  ? '/api'
+  : 'http://localhost:3001/api';
+
+function getAudioSrc(song) {
+  if (!song) return '';
+  const version = encodeURIComponent(song.mtime || song.filesize || '');
+  if (song.id) return `${API_URL}/audio/${encodeURIComponent(song.id)}?v=${version}`;
+  if (song.path) return `${API_URL}/audio?path=${encodeURIComponent(song.path)}&v=${version}`;
+  return '';
+}
+
+function toAbsoluteUrl(url) {
+  try { return new URL(url, window.location.href).href; }
+  catch { return url; }
+}
+
 export function usePlayer(settings, onError) {
   const rememberVol = settings?.rememberVolume !== false;
   const initVol     = rememberVol ? load(STORAGE_KEYS.volume, 100) : 100;
@@ -40,6 +57,7 @@ export function usePlayer(settings, onError) {
   const [queue,       setQueue]       = useState([]);
   const [queueIndex,  setQueueIndex]  = useState(-1);
 
+  const currentSongRef = useRef(null);
   const audioRef      = useRef(new Audio());
   const audioFadeRef  = useRef(new Audio()); // drugi element do crossfade
   const audioCtxRef   = useRef(null);
@@ -63,6 +81,7 @@ export function usePlayer(settings, onError) {
   const queueIndexRef  = useRef(-1);
 
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
   useEffect(() => { volumeRef.current   = volume;    }, [volume]);
   useEffect(() => { isMutedRef.current  = isMuted;   }, [isMuted]);
   useEffect(() => { repeatModeRef.current = repeatMode; }, [repeatMode]);
@@ -163,9 +182,9 @@ export function usePlayer(settings, onError) {
     };
     const onEnded = () => handleTrackEnd();
     const onAudioError = () => {
-      const src = audio.src ? decodeURI(audio.src).replace('file://', '') : '?';
-      const name = src.split('/').pop() || src;
-      if (onError) onError(`Nie można odtworzyć: ${name}`);
+      const song = currentSongRef.current;
+      const name = song?.title || song?.path?.split('/').pop() || audio.src || '?';
+      if (onError) onError(name);
       handleTrackEnd();
     };
 
@@ -203,7 +222,7 @@ export function usePlayer(settings, onError) {
     if (!next) return;
 
     const fadeAudio = audioFadeRef.current;
-    fadeAudio.src    = `file://${next.path}`;
+    fadeAudio.src    = getAudioSrc(next);
     fadeAudio.volume = 0;
     fadeAudio.load();
     fadeAudio.play().catch(() => {});
@@ -229,7 +248,7 @@ export function usePlayer(settings, onError) {
     const fadeAudio = audioFadeRef.current;
 
     // Uruchom następny z głośnością 0
-    fadeAudio.src    = `file://${next.path}`;
+    fadeAudio.src    = getAudioSrc(next);
     fadeAudio.volume = 0;
     fadeAudio.load();
     fadeAudio.play().catch(() => {});
@@ -254,7 +273,7 @@ export function usePlayer(settings, onError) {
         setCurrentSong(next);
         // Nie ruszaj isPlaying – zostaje true
         // Przełącz audio – teraz fadeAudio gra, a audioRef dostanie nowy src
-        audioRef.current.src    = `file://${next.path}`;
+        audioRef.current.src    = getAudioSrc(next);
         audioRef.current.volume = vol;
         // Synchronizuj pozycję
         audioRef.current.currentTime = fadeAudio.currentTime;
@@ -314,8 +333,8 @@ export function usePlayer(settings, onError) {
     crossfadeTimer.current = null;
     gaplessTimer.current   = null;
 
-    const url = `file://${currentSong.path}`;
-    if (decodeURI(audio.src) !== decodeURI(url)) {
+    const url = getAudioSrc(currentSong);
+    if (decodeURI(audio.src || '') !== decodeURI(toAbsoluteUrl(url))) {
       audio.src = url;
       audio.load();
     }

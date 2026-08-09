@@ -1,13 +1,15 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Play, Shuffle, ArrowLeft, Music2 } from 'lucide-react';
 import { getCoverSrc, COVER_PLACEHOLDER, pluralTracks } from '../../utils';
 import TrackList from './TrackList';
 
 export default function ArtistDetailView({ artist, songs, currentSong, isPlaying, compact, onPlay, onBack, onFavorite, onContextMenu }) {
+  const { t } = useTranslation(['common', 'library']);
   const albums = useMemo(() => {
     const g = {};
     songs.forEach(s => {
-      const k = s.album || 'Nieznany album';
+      const k = s.album || t('unknownAlbum', { ns: 'library' });
       if (!g[k]) g[k] = { name: k, cover: s.cover, songs: [] };
       g[k].songs.push(s);
     });
@@ -22,7 +24,7 @@ export default function ArtistDetailView({ artist, songs, currentSong, isPlaying
   return (
     <div className="p-6">
       <button onClick={onBack} className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors mb-5 text-sm">
-        <ArrowLeft size={16} /> Wszyscy artyści
+        <ArrowLeft size={16} /> {t('allArtists', { ns: 'library' })}
       </button>
 
       {/* Hero artysty */}
@@ -36,15 +38,15 @@ export default function ArtistDetailView({ artist, songs, currentSong, isPlaying
           />
         </div>
         <div className="flex-1 min-w-0 pb-1">
-          <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">Artysta</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">{t('artistLabel', { ns: 'library' })}</p>
           <h1 className="text-4xl md:text-5xl font-black truncate">{artist}</h1>
-          <p className="text-sm text-zinc-500 mt-1">{pluralTracks(songs.length)} • {albums.length} {albums.length === 1 ? 'album' : 'albumów'}</p>
+          <p className="text-sm text-zinc-500 mt-1">{pluralTracks(songs.length, t)} • {t('albumCount', { ns: 'common', count: albums.length })}</p>
           <div className="flex gap-2 mt-4">
             <button
               onClick={() => onPlay(songs[0], songs)}
               className="flex items-center gap-2 px-5 py-2 rounded-full text-sm font-semibold accent-gradient hover:opacity-90 shadow-md transition-all"
             >
-              <Play size={14} className="ml-0.5" /> Odtwórz wszystko
+              <Play size={14} className="ml-0.5" /> {t('playAll', { ns: 'common' })}
             </button>
             <button
               onClick={() => {
@@ -53,7 +55,7 @@ export default function ArtistDetailView({ artist, songs, currentSong, isPlaying
               }}
               className="flex items-center gap-2 px-5 py-2 rounded-full bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold transition-colors"
             >
-              <Shuffle size={14} /> Losowo
+              <Shuffle size={14} /> {t('shufflePlay', { ns: 'common' })}
             </button>
           </div>
         </div>
@@ -71,14 +73,14 @@ export default function ArtistDetailView({ artist, songs, currentSong, isPlaying
             <div>
               <h2 className="font-bold text-base">{album.name}</h2>
               {album.songs[0]?.year > 0 && (
-                <p className="text-xs text-zinc-600">{album.songs[0].year} • {pluralTracks(album.songs.length)}</p>
+                <p className="text-xs text-zinc-600">{album.songs[0].year} • {pluralTracks(album.songs.length, t)}</p>
               )}
             </div>
             <button
               onClick={() => onPlay(album.songs[0], album.songs)}
               className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 text-xs transition-colors"
             >
-              <Play size={12} /> Odtwórz album
+              <Play size={12} /> {t('playAlbum', { ns: 'common' })}
             </button>
           </div>
           <TrackList

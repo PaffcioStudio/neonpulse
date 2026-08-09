@@ -1,8 +1,10 @@
 import React, { useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ListOrdered, X, Volume2, GripVertical, Trash2 } from 'lucide-react';
 import { formatTime, getCoverSrc } from '../utils';
 
 export default function QueuePanel({ queue, queueIndex, currentSong, onSelect, onClose, onRemove, onReorder, animationsEnabled = true, isClosing = false }) {
+  const { t } = useTranslation(['player', 'common']);
   const dragIdx  = useRef(null);
   const [dragOver, setDragOver] = useState(null);
 
@@ -40,7 +42,7 @@ export default function QueuePanel({ queue, queueIndex, currentSong, onSelect, o
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
         <div className="flex items-center gap-2 text-xs font-semibold text-zinc-300">
           <ListOrdered size={14} />
-          Kolejka ({queue.length})
+          {t('queue', { ns: 'player' })} ({queue.length})
         </div>
         <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200 transition-colors">
           <X size={15} />
@@ -48,7 +50,7 @@ export default function QueuePanel({ queue, queueIndex, currentSong, onSelect, o
       </div>
 
       {queue.length === 0 ? (
-        <div className="text-xs text-zinc-600 text-center py-10">Kolejka jest pusta</div>
+        <div className="text-xs text-zinc-600 text-center py-10">{t('queueEmpty', { ns: 'player' })}</div>
       ) : (
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {queue.map((s, idx) => {
@@ -86,7 +88,7 @@ export default function QueuePanel({ queue, queueIndex, currentSong, onSelect, o
                 <button
                   onClick={e => { e.stopPropagation(); onRemove(idx); }}
                   className="flex-shrink-0 text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                  title="Usuń z kolejki"
+                  title={t('remove', { ns: 'common' })}
                 >
                   <Trash2 size={12} />
                 </button>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Play, Search, Heart, Disc, Music2, Mic2, Sparkles, Shuffle, Tag, ListPlus, Moon, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Play, Search, Heart, Disc, Music2, Mic2, Sparkles, Shuffle, Tag, ListPlus, Moon, X, Radio as RadioIcon } from 'lucide-react';
 
 import Sidebar          from './Sidebar';
 import PlayerBar        from './PlayerBar';
@@ -7,6 +8,7 @@ import TrackList        from './views/TrackList';
 import SettingsView     from './views/SettingsView';
 import GenresView       from './views/GenresView';
 import PlaylistsView    from './views/PlaylistsView';
+import RadioView        from './views/RadioView';
 import ArtistDetailView from './views/ArtistDetailView';
 import AlbumDetailView  from './views/AlbumDetailView';
 import MissingFilesView from './views/MissingFilesView';
@@ -23,6 +25,7 @@ import SleepTimerModal  from './SleepTimerModal';
 import BulkTagEditorModal from './BulkTagEditorModal';
 import EqualizerPanel   from './EqualizerPanel';
 import { usePlayer, REPEAT_MODES } from '../hooks/usePlayer';
+import { useRadioPlayer } from '../hooks/useRadioPlayer';
 import { useLastFm } from '../hooks/useLastFm';
 import {
   getCoverSrc, COVER_PLACEHOLDER, filterBySmartRules,
@@ -36,66 +39,81 @@ const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 
   ? '/api'
   : 'http://localhost:3001/api';
 
-const DEFAULT_SMART = [
-  { id:'fav-dopamine',   name:'Dopamina z Ulubionych', description:'Tylko ulubione.',                    rules:{ favoritesOnly:true } },
-  { id:'decades-90-00',  name:'Nostalgia 90/00',        description:'Hity z lat 1990–2010.',             rules:{ yearFrom:1990, yearTo:2010 } },
-  { id:'modern-bangers', name:'Nowa Era',                description:'Rok 2000+ – świeże brzmienia.',    rules:{ yearFrom:2000 } },
-  { id:'chill-mode',     name:'Night Chill',             description:'Spokojnie – nocne scrollowanie.',  rules:{ genreIncludes:['ambient','chill','lofi','downtempo'] } },
-];
-
-const DEFAULT_SETTINGS = {
-  autoPlayLast:false, gaplessPlayback:false, crossfade:false,
-  defaultShuffle:false, rememberVolume:true, rememberQueue:false,
-  minimizeToTray:true, startMinimized:false, showTrayControls:true,
-  mprisEnabled:true,
-  animationsEnabled:true, showVisualizer:true, visualizerMode:'nebula', showVisualizerBackdrop:true, compactMode:false, showAlbumColors:true,
-  fadeInOnPlay:false, replayGainEnabled:true,
-  showBtnEqualizer:true,
-  theme:'fuchsia',
-};
-
-function normalizeSettings(settings) {
-  const next = { ...settings };
-  delete next.continueOnStart;
-  delete next.hardwareAccel;
-  return next;
-}
-
-function loadQueueSnapshot(library) {
-  const queueRaw = localStorage.getItem('neonpulse_queue');
-  const idxRaw   = localStorage.getItem('neonpulse_queue_idx');
-  const lastId   = JSON.parse(localStorage.getItem('neonpulse_last_song') || 'null');
-  const lastPos  = JSON.parse(localStorage.getItem('neonpulse_last_pos') || '0');
-  const wasPlaying = JSON.parse(localStorage.getItem('neonpulse_was_playing') || 'false');
-
-  let savedIds = [];
-  let savedIdx = 0;
-
-  if (queueRaw) {
-    const parsed = JSON.parse(queueRaw);
-    if (Array.isArray(parsed)) {
-      savedIds = parsed;
-      savedIdx = idxRaw !== null ? JSON.parse(idxRaw) : 0;
-    } else if (parsed && Array.isArray(parsed.queue)) {
-      savedIds = parsed.queue.map(song => typeof song === 'object' ? song.id : song).filter(Boolean);
-      savedIdx = Number.isInteger(parsed.queueIndex) ? parsed.queueIndex : 0;
-    }
-  }
-
-  if (savedIds.length === 0 && lastId) {
-    savedIds = [lastId];
-    savedIdx = 0;
-  }
-
-  const songs = savedIds.map(id => library.find(s => s.id === id)).filter(Boolean);
-  if (songs.length === 0) return { songs: [], idx: -1, song: null, lastPos, wasPlaying };
-
-  const idx = Math.max(0, Math.min(Number(savedIdx) || 0, songs.length - 1));
-  return { songs, idx, song: songs[idx], lastPos, wasPlaying };
-}
-
-// ─────────────────────────────────────────────────────────────
 export default function MusicPlayer() {
+  const { t, i18n } = useTranslation(['common', 'library', 'player', 'radio']);
+
+  // Funkcja do aktualizacji tłumaczeń menu traya
+  const updateTrayTranslations = useCallback(() => {
+    const translations = {
+      play: t('play', { ns: 'common' }),
+      pause: t('pause', { ns: 'common' }),
+      previous: t('previous', { ns: 'common' }),
+      next: t('next', { ns: 'common' }),
+      showHide: t('showHide', { ns: 'common' }),
+      quit: t('quit', { ns: 'common' })
+    };
+    ipcRenderer.send('set-tray-translations', translations);
+  }, [t]);
+
+  const DEFAULT_SMART = [
+    { id:'fav-dopamine',   name:t('smartPlaylists.favDopamine', { ns: 'library' }), description:t('smartPlaylists.favDopamineDesc', { ns: 'library' }),                    rules:{ favoritesOnly:true } },
+    { id:'decades-90-00',  name:t('smartPlaylists.decades9000', { ns: 'library' }), description:t('smartPlaylists.decades9000Desc', { ns: 'library' }),             rules:{ yearFrom:1990, yearTo:2010 } },
+    { id:'modern-bangers', name:t('smartPlaylists.modernBangers', { ns: 'library' }), description:t('smartPlaylists.modernBangersDesc', { ns: 'library' }),    rules:{ yearFrom:2000 } },
+    { id:'chill-mode',     name:t('smartPlaylists.chillMode', { ns: 'library' }), description:t('smartPlaylists.chillModeDesc', { ns: 'library' }),  rules:{ genreIncludes:['ambient','chill','lofi','downtempo'] } },
+  ];
+
+  const DEFAULT_SETTINGS = {
+    autoPlayLast:false, gaplessPlayback:false, crossfade:false,
+    defaultShuffle:false, rememberVolume:true, rememberQueue:false,
+    minimizeToTray:true, startMinimized:false, showTrayControls:true,
+    mprisEnabled:true,
+    animationsEnabled:true, showVisualizer:true, visualizerMode:'nebula', showVisualizerBackdrop:true, compactMode:false, showAlbumColors:true,
+    fadeInOnPlay:false, replayGainEnabled:true,
+    showBtnEqualizer:true,
+    theme:'fuchsia',
+  };
+
+  function normalizeSettings(settings) {
+    const next = { ...settings };
+    delete next.continueOnStart;
+    delete next.hardwareAccel;
+    return next;
+  }
+
+  function loadQueueSnapshot(library) {
+    const queueRaw = localStorage.getItem('neonpulse_queue');
+    const idxRaw   = localStorage.getItem('neonpulse_queue_idx');
+    const lastId   = JSON.parse(localStorage.getItem('neonpulse_last_song') || 'null');
+    const lastPos  = JSON.parse(localStorage.getItem('neonpulse_last_pos') || '0');
+    const wasPlaying = JSON.parse(localStorage.getItem('neonpulse_was_playing') || 'false');
+
+    let savedIds = [];
+    let savedIdx = 0;
+
+    if (queueRaw) {
+      const parsed = JSON.parse(queueRaw);
+      if (Array.isArray(parsed)) {
+        savedIds = parsed;
+        savedIdx = idxRaw !== null ? JSON.parse(idxRaw) : 0;
+      } else if (parsed && Array.isArray(parsed.queue)) {
+        savedIds = parsed.queue.map(song => typeof song === 'object' ? song.id : song).filter(Boolean);
+        savedIdx = Number.isInteger(parsed.queueIndex) ? parsed.queueIndex : 0;
+      }
+    }
+
+    if (savedIds.length === 0 && lastId) {
+      savedIds = [lastId];
+      savedIdx = 0;
+    }
+
+    const songs = savedIds.map(id => library.find(s => s.id === id)).filter(Boolean);
+    if (songs.length === 0) return { songs: [], idx: -1, song: null, lastPos, wasPlaying };
+
+    const idx = Math.max(0, Math.min(Number(savedIdx) || 0, songs.length - 1));
+    return { songs, idx, song: songs[idx], lastPos, wasPlaying };
+  }
+
+  // ─────────────────────────────────────────────────────────────
 
   // UI
   const [activeView,      setActiveViewRaw] = useState('home');
@@ -127,6 +145,11 @@ export default function MusicPlayer() {
   // Playlisty użytkownika
   const [playlists, setPlaylists] = useState([]);
 
+  // Stacje radiowe (manifest + własne)
+  const [radioStations,       setRadioStations]       = useState([]);
+  const [radioHiddenStations, setRadioHiddenStations]  = useState([]);
+  const radio = useRadioPlayer();
+
   // Smart
   const [smartPlaylists, setSmartPlaylists] = useState(DEFAULT_SMART);
   const [activeSmartId,  setActiveSmartId]  = useState(null);
@@ -147,7 +170,31 @@ export default function MusicPlayer() {
   });
 
   // Player hook
-  const player = usePlayer(settings, (msg) => setToasts(prev => { const id = Date.now(); setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 4000); return [...prev, { id, msg, type: 'error' }]; }));
+  const player = usePlayer(settings, (name) => setToasts(prev => { const id = Date.now(); setTimeout(() => setToasts(p => p.filter(item => item.id !== id)), 4000); return [...prev, { id, msg: t('cannotPlayTrack', { ns: 'player', name }), type: 'error' }]; }));
+
+  // ─── Wzajemne wykluczanie: radio i biblioteka lokalna nie grają jednocześnie ──
+  useEffect(() => {
+    if (player.isPlaying && player.currentSong && radio.currentStation && radio.isPlaying) {
+      radio.stop({ silentTakeover: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player.isPlaying, player.currentSong]);
+
+  // radio.play/toggle opakowane tak, by zawsze wyciszały odtwarzacz plików
+  // lokalnych przed startem stacji - inaczej oba grałyby jednocześnie.
+  // Celowo BEZ useMemo: to tylko dwie funkcje-wrappery, koszt tworzenia ich
+  // na nowo przy każdym renderze jest znikomy, a useMemo tutaj wcześniej
+  // ryzykował przekazanie nieaktualnego obiektu radio dalej w drzewo (stare
+  // domknięcie), gdy zależności [radio, player] nie złapały zmiany na czas.
+  const radioControls = {
+    ...radio,
+    play: (station) => { player.setIsPlaying(false); radio.play(station); },
+    toggle: (station) => { player.setIsPlaying(false); radio.toggle(station); },
+  };
+
+  // Czy aktualnie gra stacja radiowa (a nie plik lokalny) - używane m.in.
+  // do przełączania panelu equalizera i paska odtwarzacza w tryb radiowy.
+  const radioActiveNow = !!(radio.currentStation && radio.isPlaying);
 
   // ─── Last.fm scrobbling ─────────────────────────────────────
   const lastfm = useLastFm(player.currentSong, player.isPlaying, player.progress);
@@ -168,6 +215,16 @@ export default function MusicPlayer() {
   useEffect(() => {
     applyTheme(settings.theme || 'fuchsia');
   }, [settings.theme]);
+
+  // ─── Aktualizuj tłumaczenia menu traya przy zmianie języka ────
+  useEffect(() => {
+    updateTrayTranslations();
+  }, [i18n.language, t, updateTrayTranslations]);
+
+  // ─── Inicjalizuj tłumaczenia traya przy starcie ──────────────
+  useEffect(() => {
+    updateTrayTranslations();
+  }, [updateTrayTranslations]);
 
   // ─── Sleep Timer ─────────────────────────────────────────────
   useEffect(() => {
@@ -205,6 +262,20 @@ export default function MusicPlayer() {
     if (restoredRef.current) return;
     restoredRef.current = true;
 
+    // Radio ma pierwszeństwo nad utworem: jeśli ostatnio (przed zamknięciem)
+    // grała stacja radiowa, wznów ją zamiast utworu z kolejki - w przeciwnym
+    // razie zostaje w library/favorites view bez sensu wskrzeszać starą kolejkę.
+    if (settings.autoPlayLast) {
+      try {
+        const lastRadio = JSON.parse(localStorage.getItem('neonpulse_last_radio') || 'null');
+        if (lastRadio?.url) {
+          setActiveViewRaw('radio');
+          setTimeout(() => radioControls.play(lastRadio), 400);
+          return;
+        }
+      } catch {}
+    }
+
     try {
       const { songs, idx, song, lastPos, wasPlaying } = loadQueueSnapshot(library);
       const shouldPlay = settings.autoPlayLast && song;
@@ -239,7 +310,15 @@ export default function MusicPlayer() {
   useEffect(() => {
     const save = () => {
       try {
-        localStorage.setItem('neonpulse_was_playing', JSON.stringify(player.isPlaying));
+        // Radio ma pierwszeństwo: jeśli grało w momencie zamknięcia, to ono
+        // powinno wznowić się przy starcie, a nie ostatni utwór z kolejki.
+        if (radio.currentStation && radio.isPlaying) {
+          localStorage.setItem('neonpulse_was_playing', JSON.stringify(false));
+          localStorage.setItem('neonpulse_last_radio', JSON.stringify(radio.currentStation));
+        } else {
+          localStorage.setItem('neonpulse_was_playing', JSON.stringify(player.isPlaying));
+          localStorage.removeItem('neonpulse_last_radio');
+        }
         // Zapisz też kolejkę i indeks jeśli nie zrobił tego usePlayer
         if (player.queue?.length > 0) {
           localStorage.setItem('neonpulse_queue',     JSON.stringify(player.queue.map(s => s.id)));
@@ -257,7 +336,7 @@ export default function MusicPlayer() {
       window.removeEventListener('beforeunload', save);
       try { ipcRenderer.removeListener('app:before-quit', save); } catch {}
     };
-  }, [player.isPlaying, player.queue, player.queueIndex, player.progress]);
+  }, [player.isPlaying, player.queue, player.queueIndex, player.progress, radio.currentStation, radio.isPlaying]);
 
   // ─── Album ambient color ────────────────────────────────────
   useEffect(() => {
@@ -347,11 +426,11 @@ export default function MusicPlayer() {
           await new Promise(r => setTimeout(r, delay * (attempt + 1)));
         } else {
           console.error('[API] fetchLibrary failed after retries:', e);
-          showToast('Błąd połączenia z serwerem — sprawdź czy aplikacja jest uruchomiona poprawnie', 'error');
+          showToast(t('serverConnectionError', { ns: 'common' }), 'error');
         }
       }
     }
-  }, []);
+  }, [t]);
 
   // ─── Playlisty user ─────────────────────────────────────────
   const fetchPlaylists = useCallback(async () => {
@@ -380,6 +459,22 @@ export default function MusicPlayer() {
       }
     } catch (e) { console.error('[playlists]', e); }
   }, []);
+
+  // ─── Stacje radiowe (manifest + własne) ─────────────────────
+  const fetchStations = useCallback(async () => {
+    try {
+      const [r1, r2] = await Promise.all([
+        fetch(`${API_URL}/stations`),
+        fetch(`${API_URL}/stations/hidden`),
+      ]);
+      if (r1.ok) setRadioStations((await r1.json()).stations || []);
+      if (r2.ok) setRadioHiddenStations((await r2.json()).stations || []);
+    } catch (e) { console.error('[stations]', e); }
+  }, []);
+
+  useEffect(() => {
+    fetchStations();
+  }, [fetchStations]);
 
   useEffect(() => {
     fetchLibrary();
@@ -424,15 +519,21 @@ export default function MusicPlayer() {
   }, []);
 
   // ─── Wizualizator ────────────────────────────────────────────
+  // Źródło danych: dla plików lokalnych prawdziwy AnalyserNode z usePlayer.
+  // Dla radia celowo NIE podpinamy Web Audio API pod strumień (patrz
+  // useRadioPlayer.js - ryzyko wyciszenia audio, potwierdzone w praktyce).
+  // Wizualizator dla radia dostaje syntetyczny, oscylujący "puls" zamiast
+  // realnego widma - bezpieczne rozwiązanie kosztem wizualnej wierności.
   useEffect(() => {
     cancelAnimationFrame(animFrameRef.current);
     const visualizerAsBackdrop = activeView !== 'home' && settings.showAlbumColors && settings.showVisualizerBackdrop;
+    const activeAnalyser = radio.isPlaying ? makeFakeAnalyser() : player.analyserRef.current;
     if ((activeView !== 'home' && !visualizerAsBackdrop) || !settings.showVisualizer ||
-        !canvasRef.current || !player.analyserRef.current) return;
+        !canvasRef.current || !activeAnalyser) return;
 
     const canvas = canvasRef.current;
     const ctx    = canvas.getContext('2d');
-    const analyser = player.analyserRef.current;
+    const analyser = activeAnalyser;
     const freqBuf  = new Uint8Array(analyser.frequencyBinCount);
     const timeBuf  = new Uint8Array(analyser.fftSize);
 
@@ -530,7 +631,7 @@ export default function MusicPlayer() {
       const mid    = freqBuf.slice(8, 48).reduce((a,b)=>a+b,0) / (40*255);
       const treble = freqBuf.slice(48).reduce((a,b)=>a+b,0)    / (freqBuf.length*255);
       const energy = (bass * 0.6 + mid * 0.3 + treble * 0.1);
-      const playing = player.isPlaying;
+      const playing = player.isPlaying || radio.isPlaying;
 
       // Wyczyść
       ctx.clearRect(0, 0, w, h);
@@ -741,7 +842,7 @@ export default function MusicPlayer() {
       cancelAnimationFrame(animFrameRef.current);
       window.removeEventListener('resize', onResize);
     };
-  }, [activeView, player.isPlaying, settings.showVisualizer, settings.showAlbumColors, settings.showVisualizerBackdrop, settings.visualizerMode, settings.theme, player.currentSong?.id, player.currentSong?.rating]);
+  }, [activeView, player.isPlaying, radio.isPlaying, settings.showVisualizer, settings.showAlbumColors, settings.showVisualizerBackdrop, settings.visualizerMode, settings.theme, player.currentSong?.id, player.currentSong?.rating]);
 
   // ─── Filtry ─────────────────────────────────────────────────
   const searchFiltered = useMemo(() => {
@@ -923,7 +1024,7 @@ export default function MusicPlayer() {
       }
       if (unique.length) {
         fetch(`${API_URL}/library/rescan`, { method: 'POST' });
-        showToast(`Dodano ${unique.length} folder${unique.length > 1 ? 'y' : ''} do biblioteki`, 'success');
+        showToast(t('foldersAddedToLibrary', { ns: 'common', count: unique.length }), 'success');
       }
     };
     window.addEventListener('dragenter', onDragEnter);
@@ -936,7 +1037,7 @@ export default function MusicPlayer() {
       window.removeEventListener('dragover',  onDragOver);
       window.removeEventListener('drop',      onDrop);
     };
-  }, []);
+  }, [showToast, t]);
 
   const openCtx = (e, song) => { e.preventDefault(); setCtxMenu({ visible:true, x:e.clientX, y:e.clientY, song }); };
 
@@ -967,7 +1068,7 @@ export default function MusicPlayer() {
         break;
       case 'fetch-cover':
         (async () => {
-          showToast('Szukam okładki w MusicBrainz i iTunes…', 'info');
+          showToast(t('coverFetchSearching', { ns: 'common' }), 'info');
           try {
             const r = await fetch(`${API_URL}/covers/fetch/${song.id}`, { method: 'POST' });
             const data = await r.json();
@@ -975,12 +1076,12 @@ export default function MusicPlayer() {
               setLibrary(prev => prev.map(s => s.id === song.id ? { ...s, cover: data.cover } : s));
               if (player.currentSong?.id === song.id)
                 player.setCurrentSong({ ...player.currentSong, cover: data.cover });
-              showToast('Okładka zaktualizowana!', 'success');
+              showToast(t('coverUpdated', { ns: 'common' }), 'success');
             } else {
-              showToast(data.reason || 'Nie znaleziono okładki', 'warn');
+              showToast(data.reason || t('coverNotFound', { ns: 'common' }), 'warn');
             }
           } catch {
-            showToast('Błąd połączenia podczas pobierania okładki', 'error');
+            showToast(t('coverFetchConnectionError', { ns: 'common' }), 'error');
           }
         })();
         break;
@@ -988,7 +1089,7 @@ export default function MusicPlayer() {
         ipcRenderer.invoke('open-path', song.path);
         break;
       case 'copy-path':
-        showToast('Ścieżka skopiowana do schowka', 'success');
+        showToast(t('pathCopied', { ns: 'common' }), 'success');
         break;
     }
     if (action.startsWith('rate-')) {
@@ -1116,7 +1217,7 @@ export default function MusicPlayer() {
               value={searchQuery}
               ref={searchInputRef}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Szukaj po tytule, artyście, albumie…"
+              placeholder={t('searchPlaceholder', { ns: 'common' })}
               className="w-full bg-zinc-900/70 border border-zinc-800/60 rounded-full py-1.5 pl-9 pr-4 text-sm focus:outline-none transition-all"
               style={{ '--tw-ring-color': 'var(--accent-border)' }}
               onFocus={e => e.target.style.borderColor = 'var(--accent-border)'}
@@ -1137,7 +1238,48 @@ export default function MusicPlayer() {
               </div>
 
               <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-8">
-                {player.currentSong ? (
+                {radioActiveNow ? (
+                  <div className="flex flex-col items-center gap-6 max-w-5xl w-full">
+                    <div className="flex flex-col md:flex-row items-center md:items-end gap-10 w-full justify-center">
+                      {/* Cover / favicon stacji */}
+                      <div className="relative group flex-shrink-0">
+                        <div className="relative w-64 h-64 md:w-80 md:h-80 rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-zinc-900 flex items-center justify-center">
+                          {radio.currentStation.favicon ? (
+                            <img
+                              src={radio.currentStation.favicon}
+                              className="w-full h-full object-cover"
+                              alt={radio.currentStation.name}
+                              onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                            />
+                          ) : null}
+                          <RadioIcon size={72} className="text-emerald-500/40" style={{ display: radio.currentStation.favicon ? 'none' : 'flex' }} />
+                        </div>
+                        {/* Live indicator */}
+                        <div className="absolute bottom-3 right-3 flex gap-0.5 items-end">
+                          {[1,2,3,4].map(i => (
+                            <div key={i} className="w-0.5 rounded-full bg-emerald-400 animate-pulse"
+                              style={{ height:`${8+i*3}px`, animationDelay:`${i*100}ms` }} />
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Info */}
+                      <div className="text-center md:text-left space-y-2 min-w-0 flex-1">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20 text-xs font-semibold text-emerald-400 mb-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" /> {t('liveNow', { ns: 'radio' })}
+                        </div>
+                        <h1 className="text-4xl md:text-6xl font-black leading-none tracking-tight">{radio.currentStation.name}</h1>
+                        {radio.nowPlaying?.title ? (
+                          <h2 className="text-xl md:text-3xl text-zinc-300 font-bold">
+                            {radio.nowPlaying.artist ? `${radio.nowPlaying.artist} — ${radio.nowPlaying.title}` : radio.nowPlaying.title}
+                          </h2>
+                        ) : radio.currentStation.genre ? (
+                          <h2 className="text-xl md:text-3xl text-zinc-300 font-bold">{radio.currentStation.genre}</h2>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : player.currentSong ? (
                   <div className="flex flex-col items-center gap-6 max-w-5xl w-full">
                     <div className="flex flex-col md:flex-row items-center md:items-end gap-10 w-full justify-center">
                       {/* Cover */}
@@ -1165,7 +1307,7 @@ export default function MusicPlayer() {
                       {/* Info */}
                       <div className="text-center md:text-left space-y-2 min-w-0 flex-1">
                         <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white/5 rounded-full border border-white/10 text-xs font-semibold accent-text mb-1">
-                          <Music2 size={11} /> {player.currentSong.genre || 'Gatunek nieznany'}
+                          <Music2 size={11} /> {player.currentSong.genre || t('unknownGenre', { ns: 'common' })}
                         </div>
                         <h1 className="text-4xl md:text-6xl font-black leading-none tracking-tight">{player.currentSong.title}</h1>
                         <h2 className="text-xl md:text-3xl text-zinc-300 font-bold">{player.currentSong.artist}</h2>
@@ -1191,9 +1333,9 @@ export default function MusicPlayer() {
                 ) : (
                   <div className="text-zinc-600 flex flex-col items-center">
                     <Disc size={72} className="mb-5 opacity-15" />
-                    <h2 className="text-2xl font-bold text-zinc-500">Cisza w eterze.</h2>
+                    <h2 className="text-2xl font-bold text-zinc-500">{t('silenceInEther', { ns: 'common' })}</h2>
                     <p className="text-sm text-zinc-700 mt-2">
-                      {library.length === 0 ? 'Dodaj folder muzyczny w Ustawienia' : 'Wybierz utwór z biblioteki'}
+                      {library.length === 0 ? t('addMusicFolderInSettings', { ns: 'common' }) : t('chooseTrackFromLibrary', { ns: 'common' })}
                     </p>
                   </div>
                 )}
@@ -1207,24 +1349,24 @@ export default function MusicPlayer() {
               <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                 <div>
                   <h2 className="text-3xl font-black uppercase tracking-tight">
-                    {activeView==='library'   && 'Biblioteka'}
-                    {activeView==='favorites' && <span className="flex items-center gap-2 text-red-400"><Heart size={22} className="fill-red-400"/>Ulubione</span>}
-                    {activeView==='mix-80'    && 'Lata 80.'}
-                    {activeView==='mix-90'    && 'Lata 90.'}
-                    {activeView==='mix-00'    && 'Lata 2000+'}
-                    {activeView==='smart'     && 'Smart mixy'}
+                    {activeView==='library'   && t('library', { ns: 'common' })}
+                    {activeView==='favorites' && <span className="flex items-center gap-2 text-red-400"><Heart size={22} className="fill-red-400"/>{t('favorites', { ns: 'common' })}</span>}
+                    {activeView==='mix-80'    && t('80sMix', { ns: 'library' })}
+                    {activeView==='mix-90'    && t('90sMix', { ns: 'library' })}
+                    {activeView==='mix-00'    && t('2000sMix', { ns: 'library' })}
+                    {activeView==='smart'     && t('smartMixes', { ns: 'library' })}
                   </h2>
-                  <p className="text-xs text-zinc-600 mt-0.5">{pluralTracks(displayList.length)}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5">{pluralTracks(displayList.length, t)}</p>
                 </div>
                 {displayList.length > 0 && (
                   <div className="flex gap-2">
                     <button onClick={() => player.playFromList(displayList[0], displayList)}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold accent-gradient hover:opacity-90 shadow-md transition-all">
-                      <Play size={14} className="ml-0.5" /> Odtwórz
+                      <Play size={14} className="ml-0.5" /> {t('play', { ns: 'common' })}
                     </button>
                     <button onClick={() => { player.setIsShuffle(true); player.playFromList(displayList[Math.floor(Math.random()*displayList.length)], displayList); }}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-zinc-800 hover:bg-zinc-700 text-sm font-semibold transition-colors">
-                      <Shuffle size={14} /> Losowo
+                      <Shuffle size={14} /> {t('shufflePlay', { ns: 'common' })}
                     </button>
                   </div>
                 )}
@@ -1234,7 +1376,7 @@ export default function MusicPlayer() {
               {activeView === 'smart' && (
                 <div className="flex gap-5 mb-5 flex-col lg:flex-row">
                   <div className="w-full lg:w-60 bg-zinc-900/60 border border-zinc-800/60 rounded-xl p-4">
-                    <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 mb-3"><Sparkles size={12} className="accent-text"/>Zdefiniowane</h3>
+                    <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 mb-3"><Sparkles size={12} className="accent-text"/>{t('definedSmartPlaylists', { ns: 'library' })}</h3>
                     <div className="space-y-1.5">
                       {smartPlaylists.map(pl => {
                         const cnt = filterBySmartRules(searchFiltered, pl.rules).length;
@@ -1253,15 +1395,15 @@ export default function MusicPlayer() {
                   </div>
 
                   <form onSubmit={handleCreateSmart} className="flex-1 bg-zinc-900/60 border border-zinc-800/60 rounded-xl p-4">
-                    <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 mb-3"><Mic2 size={12} className="accent-text"/>Nowa smart playlista</h3>
+                    <h3 className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 mb-3"><Mic2 size={12} className="accent-text"/>{t('newSmartPlaylist', { ns: 'library' })}</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {[
-                        ['Nazwa',    newSmartName,    setNewSmartName,    'text',   'Nocny chill…'],
-                        ['Artysta',  newSmartArtist,  setNewSmartArtist,  'text',   'np. Daft Punk'],
-                        ['Gatunki',  newSmartGenre,   setNewSmartGenre,   'text',   'techno, ambient…'],
-                        ['Rok od',   newSmartYearFrom,setNewSmartYearFrom,'number', '1990'],
-                        ['Rok do',   newSmartYearTo,  setNewSmartYearTo,  'number', '2010'],
-                        ['Limit',    newSmartLimit,   setNewSmartLimit,   'number', 'np. 50'],
+                        [t('smartFields.name', { ns: 'library' }),    newSmartName,    setNewSmartName,    'text',   t('smartPlaceholders.name', { ns: 'library' })],
+                        [t('smartFields.artist', { ns: 'library' }),  newSmartArtist,  setNewSmartArtist,  'text',   t('smartPlaceholders.artist', { ns: 'library' })],
+                        [t('smartFields.genres', { ns: 'library' }),  newSmartGenre,   setNewSmartGenre,   'text',   t('smartPlaceholders.genres', { ns: 'library' })],
+                        [t('smartFields.yearFrom', { ns: 'library' }),   newSmartYearFrom,setNewSmartYearFrom,'number', '1990'],
+                        [t('smartFields.yearTo', { ns: 'library' }),  newSmartYearTo,  setNewSmartYearTo,  'number', '2010'],
+                        [t('smartFields.limit', { ns: 'library' }),    newSmartLimit,   setNewSmartLimit,   'number', t('smartPlaceholders.limit', { ns: 'library' })],
                       ].map(([lbl,val,set,type,ph]) => (
                         <div key={lbl}>
                           <label className="text-[10px] text-zinc-600 uppercase tracking-wide">{lbl}</label>
@@ -1271,34 +1413,34 @@ export default function MusicPlayer() {
                       ))}
                       <div className="col-span-full grid grid-cols-2 gap-2">
                         <div>
-                          <label className="text-[10px] text-zinc-600 uppercase tracking-wide">Sortuj po</label>
+                          <label className="text-[10px] text-zinc-600 uppercase tracking-wide">{t('smartFields.sortBy', { ns: 'library' })}</label>
                           <select value={newSmartSortBy} onChange={e=>setNewSmartSortBy(e.target.value)}
                             className="w-full mt-1 bg-black/40 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
-                            <option value="">Domyślnie</option>
-                            <option value="title">Tytuł</option>
-                            <option value="artist">Artysta</option>
-                            <option value="album">Album</option>
-                            <option value="year">Rok</option>
-                            <option value="duration">Czas</option>
-                            <option value="random">Losowo</option>
+                            <option value="">{t('default', { ns: 'common' })}</option>
+                            <option value="title">{t('title', { ns: 'common' })}</option>
+                            <option value="artist">{t('artist', { ns: 'common' })}</option>
+                            <option value="album">{t('album', { ns: 'common' })}</option>
+                            <option value="year">{t('year', { ns: 'common' })}</option>
+                            <option value="duration">{t('duration', { ns: 'common' })}</option>
+                            <option value="random">{t('random', { ns: 'common' })}</option>
                           </select>
                         </div>
                         <div>
-                          <label className="text-[10px] text-zinc-600 uppercase tracking-wide">Kierunek</label>
+                          <label className="text-[10px] text-zinc-600 uppercase tracking-wide">{t('smartFields.sortDirection', { ns: 'library' })}</label>
                           <select value={newSmartSortDir} onChange={e=>setNewSmartSortDir(e.target.value)}
                             className="w-full mt-1 bg-black/40 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none">
-                            <option value="asc">Rosnąco</option>
-                            <option value="desc">Malejąco</option>
+                            <option value="asc">{t('ascending', { ns: 'common' })}</option>
+                            <option value="desc">{t('descending', { ns: 'common' })}</option>
                           </select>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 col-span-full">
                         <input id="sf" type="checkbox" checked={newSmartFavOnly} onChange={e=>setNewSmartFavOnly(e.target.checked)} className="w-3.5 h-3.5" />
-                        <label htmlFor="sf" className="text-xs text-zinc-500">Tylko ulubione</label>
+                        <label htmlFor="sf" className="text-xs text-zinc-500">{t('smartFields.favoritesOnly', { ns: 'library' })}</label>
                       </div>
                     </div>
                     <div className="flex justify-end mt-3">
-                      <button type="submit" className="px-4 py-1.5 text-xs rounded-full accent-gradient font-semibold">Zapisz</button>
+                      <button type="submit" className="px-4 py-1.5 text-xs rounded-full accent-gradient font-semibold">{t('save', { ns: 'common' })}</button>
                     </div>
                   </form>
                 </div>
@@ -1315,7 +1457,7 @@ export default function MusicPlayer() {
                 onBulkEdit={setBulkEditSongs}
                 autoScrollCurrent={activeView === 'library' && !!player.currentSong}
                 animationsEnabled={settings.animationsEnabled}
-                emptyMessage={library.length===0 ? 'Biblioteka pusta. Dodaj folder w Ustawienia.' : 'Brak wyników.'}
+                emptyMessage={library.length===0 ? t('libraryEmptyAddFolder', { ns: 'library' }) : t('emptyResults', { ns: 'common' })}
               />
             </div>
           )}
@@ -1336,8 +1478,8 @@ export default function MusicPlayer() {
               />
             ) : (
             <div className="p-6">
-              <h2 className="text-3xl font-black uppercase tracking-tight mb-1">Albumy</h2>
-              <p className="text-xs text-zinc-600 mb-5">{Object.keys(groupedAlbums).length} albumów</p>
+              <h2 className="text-3xl font-black uppercase tracking-tight mb-1">{t('albums', { ns: 'common' })}</h2>
+              <p className="text-xs text-zinc-600 mb-5">{t('albumCount', { ns: 'common', count: Object.keys(groupedAlbums).length })}</p>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-5">
                 {Object.entries(groupedAlbums).map(([name, songs]) => (
                   <div key={name} className="group cursor-pointer" onClick={() => setSelectedAlbum(name)}>
@@ -1349,7 +1491,7 @@ export default function MusicPlayer() {
                     </div>
                     <h3 className="font-semibold text-sm truncate">{name}</h3>
                     <p className="text-xs text-zinc-500 truncate">{songs[0].artist}</p>
-                    <p className="text-[10px] text-zinc-700">{pluralTracks(songs.length)}</p>
+                    <p className="text-[10px] text-zinc-700">{pluralTracks(songs.length, t)}</p>
                   </div>
                 ))}
               </div>
@@ -1373,8 +1515,8 @@ export default function MusicPlayer() {
               />
             ) : (
             <div className="p-6">
-              <h2 className="text-3xl font-black uppercase tracking-tight mb-1">Artyści</h2>
-              <p className="text-xs text-zinc-600 mb-5">{Object.keys(groupedArtists).length} artystów</p>
+              <h2 className="text-3xl font-black uppercase tracking-tight mb-1">{t('artists', { ns: 'common' })}</h2>
+              <p className="text-xs text-zinc-600 mb-5">{t('artistCount', { ns: 'common', count: Object.keys(groupedArtists).length })}</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {Object.entries(groupedArtists).map(([name, songs]) => (
                   <div key={name} className="bg-zinc-900/40 border border-zinc-800/50 p-3 rounded-xl flex items-center gap-3 hover:bg-zinc-800/50 hover:border-zinc-700 transition-all cursor-pointer group"
@@ -1382,7 +1524,7 @@ export default function MusicPlayer() {
                     <img src={getCoverSrc(songs[0].cover)||COVER_PLACEHOLDER(48)} className="w-12 h-12 rounded-full object-cover flex-shrink-0" loading="lazy" alt="" />
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold truncate text-sm group-hover:accent-text transition-colors">{name}</h3>
-                      <p className="text-xs text-zinc-600">{pluralTracks(songs.length)}</p>
+                      <p className="text-xs text-zinc-600">{pluralTracks(songs.length, t)}</p>
                     </div>
                     <span className="text-zinc-700 group-hover:text-zinc-400 transition-colors text-lg">›</span>
                   </div>
@@ -1407,6 +1549,16 @@ export default function MusicPlayer() {
               currentSong={player.currentSong}
               onPlay={(s, list) => player.playFromList(s, list)}
               onContextMenu={openCtx}
+            />
+          )}
+
+          {/* ── STACJE RADIOWE ── */}
+          {activeView === 'radio' && (
+            <RadioView
+              stations={radioStations}
+              hiddenStations={radioHiddenStations}
+              radio={radioControls}
+              onRefresh={fetchStations}
             />
           )}
 
@@ -1524,11 +1676,17 @@ export default function MusicPlayer() {
               <button
                 onClick={() => closeOverlay('equalizer', () => setShowEqualizer(false))}
                 className="absolute -right-2 -top-2 z-10 p-1.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 transition-colors shadow-lg"
-                title="Zamknij"
+                title={t('close', { ns: 'common' })}
               >
                 <X size={14} />
               </button>
-              <EqualizerPanel setEqGain={player.setEqGain} eqFiltersRef={player.eqFiltersRef} EQ_FREQS={player.EQ_FREQS} />
+              {radioActiveNow ? (
+                <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 text-center">
+                  <p className="text-sm text-zinc-400">{t('eqUnavailableForStation', { ns: 'radio' })}</p>
+                </div>
+              ) : (
+                <EqualizerPanel setEqGain={player.setEqGain} eqFiltersRef={player.eqFiltersRef} EQ_FREQS={player.EQ_FREQS} />
+              )}
             </div>
           </div>
         )}
@@ -1555,7 +1713,7 @@ export default function MusicPlayer() {
             onImported={async ({ name, songIds }) => {
               await fetch(`${API_URL}/playlists`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: `pl-${Date.now()}`, name, songIds }) });
               fetchPlaylists();
-              showToast(`Zaimportowano: ${name} (${songIds.length} utworów)`, 'success');
+              showToast(t('importedPlaylistToast', { ns: 'common', name, count: songIds.length }), 'success');
             }}
           />
         )}
@@ -1605,6 +1763,7 @@ export default function MusicPlayer() {
           onSleepTimer={() => setShowSleepTimer(true)} sleepRemaining={sleepSeconds}
           onRatingChange={(id, rating) => updateRating(id, rating)}
           onEqualizer={toggleEqualizer} isEqualizerOpen={showEqualizer}
+          radio={radioControls} onGoRadio={() => setActiveView('radio')}
         />
       </main>
 
@@ -1618,8 +1777,8 @@ export default function MusicPlayer() {
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
               </svg>
             </div>
-            <p className="text-lg font-semibold">Upuść folder z muzyką</p>
-            <p className="text-sm text-zinc-400">Zostanie dodany do biblioteki i przeskanowany</p>
+            <p className="text-lg font-semibold">{t('dragMusicFolderTitle', { ns: 'common' })}</p>
+            <p className="text-sm text-zinc-400">{t('dragMusicFolderSubtitle', { ns: 'common' })}</p>
           </div>
         </div>
       )}
@@ -1636,4 +1795,36 @@ function hexToRgb(hex) {
   const g = parseInt(h.slice(2,4),16);
   const b = parseInt(h.slice(4,6),16);
   return `${r},${g},${b}`;
+}
+
+// ─── Syntetyczny "analyser" dla radia ──────────────────────────
+// Radio celowo nie przechodzi przez Web Audio API (ryzyko wyciszenia
+// strumieni bez CORS - patrz useRadioPlayer.js), więc wizualizator dla
+// radia dostaje ten fejkowy generator zamiast prawdziwego widma FM.
+// Implementuje tylko to, czego rysująca funkcja realnie używa.
+function makeFakeAnalyser() {
+  const FFT_SIZE = 256;
+  const BIN_COUNT = FFT_SIZE / 2;
+  return {
+    fftSize: FFT_SIZE,
+    frequencyBinCount: BIN_COUNT,
+    getByteFrequencyData(buf) {
+      const t = performance.now() / 1000;
+      for (let i = 0; i < buf.length; i++) {
+        // Kilka nałożonych fal o różnych częstotliwościach + lekki szum,
+        // niżej pasmo "basowe" mocniejsze niż wysokie - przypomina realne widmo.
+        const decay = 1 - i / buf.length;
+        const wave = Math.sin(t * 2.2 + i * 0.35) * 0.5 + 0.5;
+        const wave2 = Math.sin(t * 3.7 - i * 0.12) * 0.5 + 0.5;
+        const noise = Math.random() * 0.15;
+        buf[i] = Math.min(255, Math.floor((wave * 0.6 + wave2 * 0.3 + noise) * decay * 210 + 20));
+      }
+    },
+    getByteTimeDomainData(buf) {
+      const t = performance.now() / 1000;
+      for (let i = 0; i < buf.length; i++) {
+        buf[i] = 128 + Math.floor(Math.sin(t * 4 + i * 0.2) * 40);
+      }
+    },
+  };
 }

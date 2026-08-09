@@ -30,8 +30,10 @@ const DATA_DIR = (() => {
   return path.join(os.homedir(), '.neonpulse');
 })();
 
-const DB_PATH    = path.join(DATA_DIR, 'library.db');
-const COVERS_DIR = path.join(DATA_DIR, 'covers');
+const DB_PATH             = path.join(DATA_DIR, 'library.db');
+const COVERS_DIR          = path.join(DATA_DIR, 'covers');
+const STATIONS_PATH       = path.join(DATA_DIR, 'stations.json'); // stacje własne + ukryte ID z manifestu
+const OPENFM_CACHE_PATH   = path.join(DATA_DIR, 'openfm-stations.json'); // cache listy stacji open.fm
 
 fs.mkdirSync(DATA_DIR,   { recursive: true });
 fs.mkdirSync(COVERS_DIR, { recursive: true });
@@ -377,6 +379,88 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use('/covers', express.static(COVERS_DIR, { maxAge: '7d' }));
 app.use('/icons', express.static(path.join(__dirname, 'resources', 'icons'), { maxAge: '30d' }));
+
+
+// GET /api/audio/:id
+// Strumieniowanie lokalnego pliku audio przez backend zamiast file://.
+// Dzięki temu renderer uruchomiony z http://localhost:5173 w dev i z file:// w buildzie
+// nie blokuje odtwarzania lokalnych MP3/FLAC/OGG przez webSecurity/CSP.
+const AUDIO_MIME = {
+  '.mp3':  'audio/mpeg',
+  '.flac': 'audio/flac',
+  '.ogg':  'audio/ogg',
+  '.opus': 'audio/ogg',
+  '.wav':  'audio/wav',
+  '.aac':  'audio/aac',
+  '.m4a':  'audio/mp4',
+  '.wma':  'audio/x-ms-wma',
+  '.ape':  'audio/ape',
+  '.aiff': 'audio/aiff',
+  '.aif':  'audio/aiff',
+};
+
+function audioMime(filePath) {
+  return AUDIO_MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+}
+
+function streamAudioFile(req, res, filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Plik audio nie istnieje' });
+    }
+
+    const stat = fs.statSync(filePath);
+    const total = stat.size;
+    const range = req.headers.range;
+    const mime = audioMime(filePath);
+
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    if (range) {
+      const match = range.match(/bytes=(\d*)-(\d*)/);
+      if (!match) {
+        res.setHeader('Content-Range', `bytes */${total}`);
+        return res.sendStatus(416);
+      }
+
+      let start = match[1] ? parseInt(match[1], 10) : 0;
+      let end = match[2] ? parseInt(match[2], 10) : total - 1;
+
+      if (!Number.isFinite(start) || start < 0) start = 0;
+      if (!Number.isFinite(end) || end >= total) end = total - 1;
+      if (start > end || start >= total) {
+        res.setHeader('Content-Range', `bytes */${total}`);
+        return res.sendStatus(416);
+      }
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      res.setHeader('Content-Length', String(end - start + 1));
+      return fs.createReadStream(filePath, { start, end }).pipe(res);
+    }
+
+    res.setHeader('Content-Length', String(total));
+    return fs.createReadStream(filePath).pipe(res);
+  } catch (e) {
+    console.error('[audio]', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+}
+
+app.get('/api/audio/:id', (req, res) => {
+  const row = db.prepare('SELECT path FROM songs WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Nie znaleziono utworu w bibliotece' });
+  return streamAudioFile(req, res, row.path);
+});
+
+// Awaryjny wariant dla obiektów bez id, np. świeżo zaimportowanych list.
+app.get('/api/audio', (req, res) => {
+  const filePath = String(req.query.path || '');
+  return streamAudioFile(req, res, filePath);
+});
 
 // GET /api/version
 app.get('/api/version', (_req, res) => {
@@ -788,7 +872,8 @@ app.get('/api/stats/artists', (req, res) => {
   const limit = Math.min(100, parseInt(req.query.limit) || 25);
   const rows = db.prepare(`
     SELECT s.artist, COUNT(ph.id) as play_count, SUM(ph.duration_played) as total_time,
-           COUNT(DISTINCT s.id) as track_count
+           COUNT(DISTINCT s.id) as track_count,
+           (SELECT s2.cover FROM songs s2 WHERE s2.artist = s.artist AND s2.cover != '' ORDER BY s2.added_at DESC LIMIT 1) as cover
     FROM play_history ph
     JOIN songs s ON ph.song_id = s.id
     WHERE s.artist IS NOT NULL AND s.artist != '' AND s.artist != 'Nieznany artysta'
@@ -1088,6 +1173,468 @@ app.post('/api/playlists/:id/reorder', (req, res) => {
   const tx  = db.transaction(() => { songIds.forEach((sid, i) => upd.run(i, req.params.id, sid)); });
   tx();
   res.json({ ok: true });
+});
+
+// ── Radio API (manifest wbudowany + stacje użytkownika) ──────────────────────
+//
+// Manifest wbudowany: resources/stations/manifest.json (poza asar dzięki
+// extraResources – edytowalny po instalacji bez rebuildu). Zawiera stacje
+// predefiniowane przez autora aplikacji.
+//
+// Stacje użytkownika + lista ukrytych ID z manifestu: DATA_DIR/stations.json
+// (analogicznie do app-settings.json w electron-main.js, ale osobny plik
+// żeby nie mieszać z ustawieniami playera).
+//
+// Specjalny typ "lanbeats" – wsparcie dla własnego serwera LanBeats (LAN-owe
+// radio autora). Traktowany jak zwykła stacja pod względem streamu (MP3 przez
+// /stream), ale front dociąga metadane now-playing z endpointu /status zamiast
+// polegać wyłącznie na tagach ICY. Nigdy nie pojawia się w manifeście ani w UI
+// jako osobna kategoria – to zwykła stacja z type:"lanbeats" dodana ręcznie.
+
+function manifestPath() {
+  // W dev: __dirname/resources/stations/manifest.json
+  // W paczce: process.resourcesPath/stations/manifest.json (extraResources)
+  const packaged = process.resourcesPath
+    ? path.join(process.resourcesPath, 'stations', 'manifest.json')
+    : null;
+  if (packaged && fs.existsSync(packaged)) return packaged;
+  return path.join(__dirname, 'resources', 'stations', 'manifest.json');
+}
+
+function loadManifestStations() {
+  try {
+    const raw = fs.readFileSync(manifestPath(), 'utf8');
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data.stations)) return [];
+    return data.stations
+      .filter(s => s && s.id && s.name && s.url)
+      .map(s => ({
+        id: String(s.id),
+        name: String(s.name),
+        url: String(s.url),
+        genre: s.genre ? String(s.genre) : '',
+        type: s.type === 'lanbeats' ? 'lanbeats' : 'icecast',
+        favicon: s.favicon ? String(s.favicon) : '',
+        source: 'manifest',
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function loadUserStations() {
+  try {
+    const raw = fs.readFileSync(STATIONS_PATH, 'utf8');
+    const data = JSON.parse(raw);
+    return {
+      stations: Array.isArray(data.stations) ? data.stations : [],
+      hiddenManifestIds: Array.isArray(data.hiddenManifestIds) ? data.hiddenManifestIds : [],
+      // Cache ikonek dociągniętych automatycznie dla stacji z manifestu, które
+      // same nie mają favicon ustawionego. Klucz = id stacji z manifestu,
+      // wartość = URL ikonki. Osobno od manifestu, bo manifest to plik
+      // "źródłowy" edytowalny przez autora, nie miejsce na dane sesyjne.
+      manifestFaviconCache: (data.manifestFaviconCache && typeof data.manifestFaviconCache === 'object')
+        ? data.manifestFaviconCache : {},
+    };
+  } catch {
+    return { stations: [], hiddenManifestIds: [], manifestFaviconCache: {} };
+  }
+}
+
+function saveUserStations(data) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(STATIONS_PATH, JSON.stringify(data, null, 2));
+}
+
+// GET /api/stations – połączona lista: manifest (bez ukrytych) + własne
+app.get('/api/stations', (_req, res) => {
+  const manifestStations = loadManifestStations();
+  const { stations: userStations, hiddenManifestIds, manifestFaviconCache } = loadUserStations();
+
+  const visibleManifest = manifestStations
+    .filter(s => !hiddenManifestIds.includes(s.id))
+    .map(s => ({ ...s, favicon: s.favicon || manifestFaviconCache[s.id] || '', isHidden: false }));
+
+  const ownStations = userStations.map(s => ({ ...s, source: 'user', isHidden: false }));
+
+  res.json({
+    stations: [...visibleManifest, ...ownStations],
+    hiddenManifestIds,
+  });
+});
+
+// POST /api/stations/auto-fetch-favicons – jednorazowo dociągnij ikonki dla
+// stacji z manifestu, które ich nie mają, przez Radio-Browser. Wołane przez
+// front raz na sesję (np. przy wejściu w zakładkę Radio) - wyniki cache'owane
+// w stations.json, więc kolejne wywołania pomijają już znalezione stacje.
+app.post('/api/stations/auto-fetch-favicons', async (_req, res) => {
+  const manifestStations = loadManifestStations();
+  const data = loadUserStations();
+  const missing = manifestStations.filter(s => !s.favicon && !data.manifestFaviconCache[s.id]);
+
+  if (missing.length === 0) return res.json({ updated: 0 });
+
+  const https = require('https');
+  const fetchOne = (name) => new Promise((resolve) => {
+    const target = `https://de1.api.radio-browser.info/json/stations/byname/${encodeURIComponent(name)}?limit=3&hidebroken=true&order=votes&reverse=true`;
+    const r = https.get(target, { timeout: 4000, headers: { 'User-Agent': 'NeonPulse-Player/1.0' } }, (r2) => {
+      let body = '';
+      r2.on('data', c => body += c);
+      r2.on('end', () => {
+        try {
+          const list = JSON.parse(body);
+          const withIcon = Array.isArray(list) ? list.find(s => s.favicon && s.favicon.trim()) : null;
+          resolve(withIcon?.favicon || null);
+        } catch { resolve(null); }
+      });
+    });
+    r.on('error', () => resolve(null));
+    r.on('timeout', () => { r.destroy(); resolve(null); });
+  });
+
+  let updated = 0;
+  for (const station of missing) {
+    const favicon = await fetchOne(station.name);
+    if (favicon) {
+      data.manifestFaviconCache[station.id] = favicon;
+      updated++;
+    }
+  }
+  if (updated > 0) saveUserStations(data);
+  res.json({ updated });
+});
+
+// GET /api/stations/hidden – pełne dane ukrytych stacji manifestu (do listy "Ukryte" w UI)
+app.get('/api/stations/hidden', (_req, res) => {
+  const manifestStations = loadManifestStations();
+  const { hiddenManifestIds, manifestFaviconCache } = loadUserStations();
+  const hidden = manifestStations
+    .filter(s => hiddenManifestIds.includes(s.id))
+    .map(s => ({ ...s, favicon: s.favicon || manifestFaviconCache[s.id] || '', isHidden: true }));
+  res.json({ stations: hidden });
+});
+
+// POST /api/stations – dodaj własną stację { name, url, genre?, favicon?, type? }
+app.post('/api/stations', (req, res) => {
+  const { name, url, genre, favicon, type, slug } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Brak nazwy stacji' });
+  const isOpenfm = type === 'openfm';
+  if (isOpenfm && (!slug || !slug.trim())) return res.status(400).json({ error: 'Brak slug stacji open.fm' });
+  if (!isOpenfm && (!url || !url.trim())) return res.status(400).json({ error: 'Brak adresu URL stacji' });
+
+  const data = loadUserStations();
+  const station = {
+    id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: name.trim(),
+    // Stacje open.fm nie mają stałego URL (token wygasa) - url tu jest tylko
+    // placeholderem/etykietą, useRadioPlayer dla type:"openfm" czyta zawsze
+    // "slug" i dociąga świeży URL z backendu tuż przed odtworzeniem.
+    url: isOpenfm ? '' : url.trim(),
+    slug: isOpenfm ? slug.trim() : undefined,
+    genre: (genre || '').trim(),
+    favicon: (favicon || '').trim(),
+    type: type === 'lanbeats' ? 'lanbeats' : isOpenfm ? 'openfm' : 'icecast',
+    addedAt: Date.now(),
+  };
+  data.stations.push(station);
+  saveUserStations(data);
+  res.json({ ok: true, station });
+});
+
+// PUT /api/stations/:id – edytuj własną stację
+app.put('/api/stations/:id', (req, res) => {
+  const { name, url, genre, favicon } = req.body || {};
+  const data = loadUserStations();
+  const idx = data.stations.findIndex(s => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Nie znaleziono stacji' });
+
+  if (name !== undefined)    data.stations[idx].name    = String(name).trim();
+  if (url !== undefined)     data.stations[idx].url     = String(url).trim();
+  if (genre !== undefined)   data.stations[idx].genre   = String(genre).trim();
+  if (favicon !== undefined) data.stations[idx].favicon = String(favicon).trim();
+
+  saveUserStations(data);
+  res.json({ ok: true, station: data.stations[idx] });
+});
+
+// DELETE /api/stations/:id – usuń własną stację
+app.delete('/api/stations/:id', (req, res) => {
+  const data = loadUserStations();
+  const before = data.stations.length;
+  data.stations = data.stations.filter(s => s.id !== req.params.id);
+  if (data.stations.length === before) return res.status(404).json({ error: 'Nie znaleziono stacji' });
+  saveUserStations(data);
+  res.json({ ok: true });
+});
+
+// POST /api/stations/:id/hide – ukryj stację z manifestu (nie da się usunąć, tylko ukryć)
+app.post('/api/stations/:id/hide', (req, res) => {
+  const data = loadUserStations();
+  if (!data.hiddenManifestIds.includes(req.params.id)) data.hiddenManifestIds.push(req.params.id);
+  saveUserStations(data);
+  res.json({ ok: true });
+});
+
+// POST /api/stations/:id/unhide – przywróć ukrytą stację z manifestu
+app.post('/api/stations/:id/unhide', (req, res) => {
+  const data = loadUserStations();
+  data.hiddenManifestIds = data.hiddenManifestIds.filter(id => id !== req.params.id);
+  saveUserStations(data);
+  res.json({ ok: true });
+});
+
+// POST /api/stations/import – import z pliku M3U/M3U8/XML (XSPF) – linki streamów
+app.post('/api/stations/import', (req, res) => {
+  const { content, filename } = req.body || {};
+  if (!content) return res.status(400).json({ error: 'Brak zawartości' });
+
+  const ext = (filename || '').split('.').pop().toLowerCase();
+  const parsed = []; // { name, url }
+
+  if (ext === 'm3u' || ext === 'm3u8') {
+    const lines = content.split(/\r?\n/).map(l => l.trim());
+    let pendingName = null;
+    for (const line of lines) {
+      if (!line) continue;
+      if (line.startsWith('#EXTINF:')) {
+        const comma = line.indexOf(',');
+        pendingName = comma !== -1 ? line.slice(comma + 1).trim() : null;
+        continue;
+      }
+      if (line.startsWith('#')) continue;
+      parsed.push({ name: pendingName || line, url: line });
+      pendingName = null;
+    }
+  } else if (ext === 'xml' || ext === 'xspf') {
+    // XSPF: <track><location>URL</location><title>NAZWA</title></track>
+    const trackBlocks = content.match(/<track>[\s\S]*?<\/track>/gi) || [];
+    for (const block of trackBlocks) {
+      const locMatch   = block.match(/<location>(.*?)<\/location>/i);
+      const titleMatch = block.match(/<title>(.*?)<\/title>/i);
+      if (locMatch) {
+        parsed.push({
+          url: locMatch[1].trim(),
+          name: titleMatch ? titleMatch[1].trim() : locMatch[1].trim(),
+        });
+      }
+    }
+    // Fallback – gołe <location> bez <track> (niektóre generatory)
+    if (parsed.length === 0) {
+      const locs = content.match(/<location>(.*?)<\/location>/gi) || [];
+      for (const l of locs) {
+        const url = l.replace(/<\/?location>/gi, '').trim();
+        if (url) parsed.push({ name: url, url });
+      }
+    }
+  } else {
+    return res.status(415).json({ error: 'Nieobsługiwany format. Użyj M3U, M3U8 lub XML/XSPF.' });
+  }
+
+  if (parsed.length === 0) return res.status(422).json({ error: 'Nie znaleziono żadnych stacji w pliku' });
+
+  const data = loadUserStations();
+  const added = parsed.map(p => {
+    const station = {
+      id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: p.name || p.url,
+      url: p.url,
+      genre: '',
+      favicon: '',
+      type: 'icecast',
+      addedAt: Date.now(),
+    };
+    data.stations.push(station);
+    return station;
+  });
+  saveUserStations(data);
+  res.json({ ok: true, added, count: added.length });
+});
+
+// GET /api/stations/lookup-favicon?name=X – szuka ikonki stacji w bazie
+// Radio-Browser (community-driven katalog stacji internetowych, radio-browser.info).
+// Zwraca kilka trafień z favicon, żeby użytkownik mógł wybrać właściwe -
+// nazwy stacji bywają niejednoznaczne (kilka rozgłośni o podobnej nazwie
+// w różnych krajach). Proxy przez backend, żeby ominąć CORS w rendererze.
+app.get('/api/stations/lookup-favicon', async (req, res) => {
+  const name = (req.query.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Brak parametru name' });
+  try {
+    const target = `https://de1.api.radio-browser.info/json/stations/byname/${encodeURIComponent(name)}?limit=8&hidebroken=true&order=votes&reverse=true`;
+    const https = require('https');
+    const body = await new Promise((resolve, reject) => {
+      const r = https.get(target, {
+        timeout: 5000,
+        headers: { 'User-Agent': 'NeonPulse-Player/1.0' },
+      }, (r2) => {
+        let data = '';
+        r2.on('data', c => data += c);
+        r2.on('end', () => resolve(data));
+      });
+      r.on('error', reject);
+      r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); });
+    });
+    const stations = JSON.parse(body);
+    const results = (Array.isArray(stations) ? stations : [])
+      .filter(s => s.favicon && s.favicon.trim())
+      .map(s => ({
+        name: s.name,
+        favicon: s.favicon,
+        country: s.countrycode || '',
+        tags: s.tags || '',
+      }))
+      .slice(0, 6);
+    res.json({ results });
+  } catch (e) {
+    res.status(502).json({ error: 'Nie udało się połączyć z Radio-Browser', detail: e.message });
+  }
+});
+
+// ── open.fm – dynamiczne tokeny streamu ───────────────────────────────────
+//
+// open.fm chroni swoje strumienie podpisanymi, wygasającymi URL-ami (token
+// w query stringu, ważny prawdopodobnie kilkadziesiąt minut - dokładny czas
+// nieudokumentowany, więc traktujemy każdy URL jako jednorazowy). Dlatego
+// stacje open.fm w NeonPulse to nie zwykły stały "url", tylko "slug" +
+// type:"openfm" - świeży URL jest pobierany dynamicznie tuż przed każdym
+// odtworzeniem (patrz POST /api/stations/openfm/token poniżej), zamiast być
+// zapisany raz w manifeście czy w stations.json, gdzie szybko by się
+// zdezaktualizował.
+//
+// Lista dostępnych stacji (slug + nazwa) jest scrape'owana z open.fm i
+// cache'owana lokalnie na 7 dni - identyczna logika jak w oryginalnym
+// skrypcie bash (openfm-play.sh), tylko przeniesiona do backendu.
+const OPENFM_UA = 'Mozilla/5.0 (X11; Linux x86_64; rv:153.0) Gecko/20100101 Firefox/153.0';
+const OPENFM_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function loadOpenfmCache() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(OPENFM_CACHE_PATH, 'utf8'));
+    if (!Array.isArray(raw.stations) || !raw.fetchedAt) return null;
+    if (Date.now() - raw.fetchedAt > OPENFM_MAX_AGE_MS) return null;
+    return raw.stations;
+  } catch {
+    return null;
+  }
+}
+
+function saveOpenfmCache(stations) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(OPENFM_CACHE_PATH, JSON.stringify({ fetchedAt: Date.now(), stations }, null, 2));
+}
+
+function httpsGetText(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const https = require('https');
+    const r = https.get(url, { timeout: 8000, headers }, (r2) => {
+      let body = '';
+      r2.on('data', c => body += c);
+      r2.on('end', () => resolve(body));
+    });
+    r.on('error', reject);
+    r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); });
+  });
+}
+
+async function fetchOpenfmStations() {
+  const html = await httpsGetText('https://open.fm/stacje-muzyczne/trance', { 'User-Agent': OPENFM_UA });
+  // Ten sam wzorzec co w openfm-play.sh: "id":N,"name":"X","slug":"Y"
+  const re = /"id":(\d+),"name":"((?:[^"\\]|\\.)*)","slug":"([^"]*)"/g;
+  const seen = new Map();
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const [, id, rawName, slug] = m;
+    if (!slug || seen.has(slug)) continue;
+    let name = rawName;
+    try { name = JSON.parse(`"${rawName}"`); } catch {}
+    seen.set(slug, { slug, id, name });
+  }
+  return [...seen.values()];
+}
+
+// GET /api/stations/openfm/list – lista stacji open.fm (cache 7 dni, jak w skrypcie bash)
+app.get('/api/stations/openfm/list', async (req, res) => {
+  const force = req.query.refresh === '1';
+  if (!force) {
+    const cached = loadOpenfmCache();
+    if (cached) return res.json({ stations: cached, cached: true });
+  }
+  try {
+    const stations = await fetchOpenfmStations();
+    if (stations.length < 10) throw new Error('Podejrzanie mało stacji, coś poszło nie tak przy pobieraniu');
+    saveOpenfmCache(stations);
+    res.json({ stations, cached: false });
+  } catch (e) {
+    // Fallback: jeśli świeże pobranie padło, spróbuj oddać nawet przeterminowany cache
+    // zamiast zostawić użytkownika z pustą listą.
+    try {
+      const raw = JSON.parse(fs.readFileSync(OPENFM_CACHE_PATH, 'utf8'));
+      if (Array.isArray(raw.stations) && raw.stations.length) {
+        return res.json({ stations: raw.stations, cached: true, stale: true });
+      }
+    } catch {}
+    res.status(502).json({ error: 'Nie udało się pobrać listy stacji open.fm', detail: e.message });
+  }
+});
+
+// POST /api/stations/openfm/token – świeży, podpisany URL streamu dla danej stacji.
+// Wołane przez front tuż przed KAŻDYM odtworzeniem (nie cache'owane) - token
+// wygasa, więc stary URL prędzej czy później przestanie działać.
+app.post('/api/stations/openfm/token', async (req, res) => {
+  const { slug } = req.body || {};
+  if (!slug) return res.status(400).json({ error: 'Brak parametru slug' });
+
+  let stationId = null;
+  let stationName = slug;
+  const cached = loadOpenfmCache();
+  const found = cached?.find(s => s.slug === slug);
+  if (found) { stationId = found.id; stationName = found.name; }
+  else {
+    // Cache pusty/nie ma tej stacji - dociągnij świeżą listę zanim się poddamy
+    try {
+      const fresh = await fetchOpenfmStations();
+      saveOpenfmCache(fresh);
+      const f2 = fresh.find(s => s.slug === slug);
+      if (f2) { stationId = f2.id; stationName = f2.name; }
+    } catch { /* spadnie do 404 poniżej */ }
+  }
+  if (!stationId) return res.status(404).json({ error: `Nie znaleziono stacji open.fm o slug "${slug}"` });
+
+  try {
+    const code = `OFM${stationId}`;
+    const fp = `https://stream-cdn-1.open.fm/${code}/ngrp:standard/playlist.m3u8`;
+    const body = await httpsGetText(`https://open.fm/api/user/token?fp=${encodeURIComponent(fp)}`, {
+      'User-Agent': OPENFM_UA,
+      'Referer': 'https://open.fm/',
+    });
+    const match = body.match(/https:\/\/stream-cdn[^"]*/);
+    if (!match) throw new Error('Odpowiedź open.fm nie zawierała URL streamu');
+    res.json({ url: match[0], name: stationName, code });
+  } catch (e) {
+    res.status(502).json({ error: 'Nie udało się pobrać tokenu streamu open.fm', detail: e.message });
+  }
+});
+
+// GET /api/stations/lanbeats-status – proxy do /status LanBeats, żeby uniknąć CORS
+// w rendererze. Parametr base = pełny adres serwera LanBeats (np. http://host:17650).
+app.get('/api/stations/lanbeats-status', async (req, res) => {
+  const base = req.query.base;
+  if (!base) return res.status(400).json({ error: 'Brak parametru base' });
+  try {
+    const target = new URL('/status', base).toString();
+    const lib = target.startsWith('https') ? require('https') : require('http');
+    const data = await new Promise((resolve, reject) => {
+      const r = lib.get(target, { timeout: 4000 }, (r2) => {
+        let body = '';
+        r2.on('data', c => body += c);
+        r2.on('end', () => { try { resolve(JSON.parse(body)); } catch (e) { reject(e); } });
+      });
+      r.on('error', reject);
+      r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); });
+    });
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: 'Serwer LanBeats niedostępny', detail: e.message });
+  }
 });
 
 // GET /api/missing  – znajdź martwe wpisy (plik nie istnieje na dysku)

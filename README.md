@@ -1,5 +1,9 @@
 <div align="center">
 
+<img src="screenshots/banner.jpg" width="100%" alt="NeonPulse Player - baner" />
+
+<br/>
+
 <img src="resources/icons/neonpulse-player.png" width="118" alt="NeonPulse Player" />
 
 # NeonPulse Player
@@ -42,6 +46,7 @@
 | Biblioteka | SQLite, live scan folderów, wyszukiwanie, sortowanie i widoki szczegółowe |
 | Metadane | Edycja tagów, zbiorcza edycja, oceny, okładki z MusicBrainz / Cover Art Archive |
 | Playlisty | Playlisty lokalne, smart playlisty, import M3U/PLS/XSPF i eksport M3U |
+| Radio internetowe | Stacje radiowe online (Icecast/Shoutcast), własne stacje, import z M3U/M3U8/XML, manifest predefiniowanych stacji |
 | Teksty | Pliki `.lrc`, teksty embedded i synchronizacja z postępem utworu |
 | Last.fm | Scrobbling, now playing i przełącznik integracji w ustawieniach |
 

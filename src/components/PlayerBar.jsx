@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Play, Pause, SkipBack, SkipForward, Repeat, Repeat1, Shuffle,
-         Volume2, VolumeX, ListOrdered, Maximize2, Moon, Star, SlidersHorizontal } from 'lucide-react';
+         Volume2, VolumeX, ListOrdered, Maximize2, Moon, Star, SlidersHorizontal, Radio, Square, Loader2 } from 'lucide-react';
 import { formatTime, formatTimeRemaining, getCoverSrc, COVER_PLACEHOLDER } from '../utils';
 import { REPEAT_MODES } from '../hooks/usePlayer';
 import HeartButton from './HeartButton';
@@ -13,12 +14,19 @@ export default function PlayerBar({
   settings,
   onNowPlaying, isNowPlaying, onSleepTimer, sleepRemaining,
   onRatingChange, onEqualizer, isEqualizerOpen,
+  radio, onGoRadio,
 }) {
+  const { t } = useTranslation(['common', 'player', 'radio']);
   const [showRemaining, setShowRemaining] = useState(false);
   const volumeWrapRef = useRef(null);
   const progressPct = currentSong?.duration ? (progress / currentSong.duration) * 100 : 0;
   const RepeatIcon = repeatMode === REPEAT_MODES.ONE ? Repeat1 : Repeat;
   const repeatActive = repeatMode !== REPEAT_MODES.OFF;
+
+  // Gdy stacja radiowa aktualnie gra, cały pasek przełącza się w tryb radiowy:
+  // brak sensu w seek/next/prev/EQ dla strumienia live, więc pokazujemy
+  // uproszczone info + play/stop. Głośność działa tak samo (na audio radiowym).
+  const radioActive = !!(radio?.currentStation && radio?.isPlaying);
 
   useEffect(() => {
     const el = volumeWrapRef.current;
@@ -34,7 +42,35 @@ export default function PlayerBar({
 
       {/* ── Info ── */}
       <div className="w-[28%] flex items-center gap-3 min-w-0">
-        {currentSong ? (
+        {radioActive ? (
+          <>
+            <div
+              className="w-[52px] h-[52px] rounded-lg flex items-center justify-center flex-shrink-0 shadow-md cursor-pointer bg-emerald-500/10 border border-emerald-500/30 overflow-hidden"
+              onClick={onGoRadio}
+            >
+              {radio.currentStation.favicon
+                ? <img src={radio.currentStation.favicon} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+                : null}
+              <Radio size={22} className="text-emerald-400" style={{ display: radio.currentStation.favicon ? 'none' : 'flex' }} />
+            </div>
+            <div className="overflow-hidden">
+              <h4
+                className="font-semibold text-sm truncate cursor-pointer hover:accent-text transition-colors leading-tight"
+                onClick={onGoRadio}
+              >
+                {radio.currentStation.name}
+              </h4>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse flex-shrink-0" />
+                <p className="text-xs text-zinc-500 truncate">
+                  {radio.nowPlaying?.title
+                    ? (radio.nowPlaying.artist ? `${radio.nowPlaying.artist} — ${radio.nowPlaying.title}` : radio.nowPlaying.title)
+                    : t('liveNow', { ns: 'radio' })}
+                </p>
+              </div>
+            </div>
+          </>
+        ) : currentSong ? (
           <>
             <img
               src={cover || COVER_PLACEHOLDER(56)}
@@ -46,7 +82,7 @@ export default function PlayerBar({
               <h4
                 className="font-semibold text-sm truncate cursor-pointer hover:accent-text transition-colors leading-tight"
                 onClick={onGoAlbum}
-                title={currentSong.album ? `Album: ${currentSong.album}` : 'Album'}
+                title={currentSong.album ? `${t('album', { ns: 'common' })}: ${currentSong.album}` : t('album', { ns: 'common' })}
               >
                 {currentSong.title}
               </h4>
@@ -54,7 +90,7 @@ export default function PlayerBar({
                 type="button"
                 className="block max-w-full text-xs text-zinc-500 truncate mt-0.5 hover:accent-text transition-colors text-left"
                 onClick={onGoArtist}
-                title={currentSong.artist ? `Artysta: ${currentSong.artist}` : 'Artysta'}
+                title={currentSong.artist ? `${t('artist', { ns: 'common' })}: ${currentSong.artist}` : t('artist', { ns: 'common' })}
               >
                 {currentSong.artist}
               </button>
@@ -73,7 +109,7 @@ export default function PlayerBar({
                   <button
                     key={n}
                     onClick={() => onRatingChange?.(currentSong.id, n === currentSong.rating ? 0 : n)}
-                    title={`${n} gwiazdka`}
+                    title={`${n} ${t('star', { ns: 'player' })}`}
                     className="group/star relative transition-transform hover:scale-125 active:scale-95 duration-100"
                     style={{ transition: 'transform 120ms cubic-bezier(0.34,1.56,0.64,1)' }}
                   >
@@ -91,88 +127,107 @@ export default function PlayerBar({
             </div>
           </>
         ) : (
-          <p className="text-xs text-zinc-700">Nic nie gra</p>
+          <p className="text-xs text-zinc-700">{t('nothingPlaying', { ns: 'player' })}</p>
         )}
       </div>
 
       {/* ── Kontrolki + pasek ── */}
       <div className="flex flex-col items-center w-[44%]">
-        <div className="flex items-center gap-5 mb-2">
-          <button onClick={() => setIsShuffle(p => !p)} title="Losowo"
-            className={`transition-all hover:scale-110 ${isShuffle ? 'accent-text' : 'text-zinc-500 hover:text-white'}`}>
-            <Shuffle size={16} />
-          </button>
-          <button onClick={handlePrev} className="text-zinc-400 hover:text-white hover:scale-110 transition-all">
-            <SkipBack size={22} />
-          </button>
-          {/* Przycisk play/pause z motywem */}
-          <button
-            onClick={() => handlePlayPause(displayList)}
-            className="w-11 h-11 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg accent-glow-bg"
-            style={{ background: 'linear-gradient(135deg, var(--accent-from), var(--accent-to))' }}
-          >
-            {isPlaying
-              ? <Pause size={20} fill="white" className="text-white" />
-              : <Play  size={20} fill="white" className="text-white ml-0.5" />}
-          </button>
-          <button onClick={handleNext} className="text-zinc-400 hover:text-white hover:scale-110 transition-all">
-            <SkipForward size={22} />
-          </button>
-          <button onClick={cycleRepeat} title={`Powtarzanie: ${repeatMode}`}
-            className={`transition-all hover:scale-110 ${repeatActive ? 'accent-text' : 'text-zinc-500 hover:text-white'}`}>
-            <RepeatIcon size={16} />
-          </button>
-        </div>
-
-        {/* Seekbar */}
-        <div className="w-full flex items-center gap-3 text-xs font-mono text-zinc-600">
-          <span className="w-10 text-right tabular-nums">{formatTime(progress)}</span>
-
-          <div
-            className="flex-1 h-1.5 bg-zinc-800 rounded-full cursor-pointer group relative"
-            onClick={e => {
-              const r = e.currentTarget.getBoundingClientRect();
-              seekTo((e.clientX - r.left) / r.width);
-            }}
-          >
-            <div
-              className={`h-full accent-progress rounded-full relative pointer-events-none ${
-                isPlaying && settings?.animationsEnabled ? 'progress-pulse' : ''
-              }`}
-              style={{ width: `${progressPct}%`, willChange: 'width' }}
+        {radioActive ? (
+          <div className="flex items-center gap-5">
+            <button
+              onClick={() => radio.toggle(radio.currentStation)}
+              className="w-11 h-11 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg accent-glow-bg"
+              style={{ background: 'linear-gradient(135deg, var(--accent-from), var(--accent-to))' }}
             >
-              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 shadow transition-opacity pointer-events-none" />
-            </div>
+              {radio.isLoading
+                ? <Loader2 size={18} className="animate-spin text-white" />
+                : <Square size={16} fill="white" className="text-white" />}
+            </button>
+            <span className="text-[11px] text-zinc-600 uppercase tracking-wide">{t('liveNow', { ns: 'radio' })}</span>
           </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-5 mb-2">
+              <button onClick={() => setIsShuffle(p => !p)} title={t('shuffle', { ns: 'player' })}
+                className={`transition-all hover:scale-110 ${isShuffle ? 'accent-text' : 'text-zinc-500 hover:text-white'}`}>
+                <Shuffle size={16} />
+              </button>
+              <button onClick={handlePrev} className="text-zinc-400 hover:text-white hover:scale-110 transition-all">
+                <SkipBack size={22} />
+              </button>
+              {/* Przycisk play/pause z motywem */}
+              <button
+                onClick={() => handlePlayPause(displayList)}
+                className="w-11 h-11 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-lg accent-glow-bg"
+                style={{ background: 'linear-gradient(135deg, var(--accent-from), var(--accent-to))' }}
+              >
+                {isPlaying
+                  ? <Pause size={20} fill="white" className="text-white" />
+                  : <Play  size={20} fill="white" className="text-white ml-0.5" />}
+              </button>
+              <button onClick={handleNext} className="text-zinc-400 hover:text-white hover:scale-110 transition-all">
+                <SkipForward size={22} />
+              </button>
+              <button onClick={cycleRepeat} title={t('repeatMode', { ns: 'player', mode: repeatMode })}
+                className={`transition-all hover:scale-110 ${repeatActive ? 'accent-text' : 'text-zinc-500 hover:text-white'}`}>
+                <RepeatIcon size={16} />
+              </button>
+            </div>
 
-          <button
-            className="w-14 text-left tabular-nums hover:accent-text transition-colors select-none"
-            onClick={() => setShowRemaining(r => !r)}
-            title={showRemaining ? 'Pokaż czas trwania' : 'Pokaż czas pozostały'}
-          >
-            {showRemaining
-              ? formatTimeRemaining(progress, currentSong?.duration)
-              : formatTime(currentSong?.duration)}
-          </button>
-        </div>
+            {/* Seekbar */}
+            <div className="w-full flex items-center gap-3 text-xs font-mono text-zinc-600">
+              <span className="w-10 text-right tabular-nums">{formatTime(progress)}</span>
+
+              <div
+                className="flex-1 h-1.5 bg-zinc-800 rounded-full cursor-pointer group relative"
+                onClick={e => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  seekTo((e.clientX - r.left) / r.width);
+                }}
+              >
+                <div
+                  className={`h-full accent-progress rounded-full relative pointer-events-none ${
+                    isPlaying && settings?.animationsEnabled ? 'progress-pulse' : ''
+                  }`}
+                  style={{ width: `${progressPct}%`, willChange: 'width' }}
+                >
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 shadow transition-opacity pointer-events-none" />
+                </div>
+              </div>
+
+              <button
+                className="w-14 text-left tabular-nums hover:accent-text transition-colors select-none"
+                onClick={() => setShowRemaining(r => !r)}
+                title={showRemaining ? t('showDuration', { ns: 'player' }) : t('showRemaining', { ns: 'player' })}
+              >
+                {showRemaining
+                  ? formatTimeRemaining(progress, currentSong?.duration)
+                  : formatTime(currentSong?.duration)}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Głośność ── */}
       <div className="w-[28%] flex justify-end items-center gap-3">
-        <button
-          onClick={onShowQueue}
-          className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] border transition-colors ${
-            isQueueOpen
-              ? 'accent-border accent-text accent-bg'
-              : 'border-zinc-700 text-zinc-500 hover:border-zinc-500'
-          }`}
-        >
-          <ListOrdered size={12} /> {queue.length}
-        </button>
-        {(settings?.showBtnNowPlaying ?? false) && (
+        {!radioActive && (
+          <button
+            onClick={onShowQueue}
+            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] border transition-colors ${
+              isQueueOpen
+                ? 'accent-border accent-text accent-bg'
+                : 'border-zinc-700 text-zinc-500 hover:border-zinc-500'
+            }`}
+          >
+            <ListOrdered size={12} /> {queue.length}
+          </button>
+        )}
+        {!radioActive && (settings?.showBtnNowPlaying ?? false) && (
           <button
             onClick={onNowPlaying}
-            title={isNowPlaying ? 'Zamknij widok odtwarzania' : 'Widok odtwarzania'}
+            title={isNowPlaying ? t('closeNowPlaying', { ns: 'player' }) : t('openNowPlaying', { ns: 'player' })}
             className={`hidden md:flex p-2 rounded-full border transition-colors ${
               isNowPlaying
                 ? 'accent-border accent-text accent-bg'
@@ -183,10 +238,10 @@ export default function PlayerBar({
           </button>
         )}
 
-        {(settings?.showBtnSleepTimer ?? true) && (
+        {!radioActive && (settings?.showBtnSleepTimer ?? true) && (
           <button
             onClick={onSleepTimer}
-            title={sleepRemaining > 0 ? `Wyłącznik czasowy: ${Math.ceil(sleepRemaining / 60)} min` : 'Wyłącznik czasowy'}
+            title={sleepRemaining > 0 ? `${t('sleepTimer', { ns: 'player' })}: ${Math.ceil(sleepRemaining / 60)} min` : t('sleepTimer', { ns: 'player' })}
             className={`hidden md:flex p-2 rounded-full border transition-colors relative ${
               sleepRemaining > 0
                 ? 'border-indigo-500/50 text-indigo-400 bg-indigo-500/10'
@@ -202,10 +257,10 @@ export default function PlayerBar({
           </button>
         )}
 
-        {(settings?.showBtnEqualizer ?? true) && (
+        {!radioActive && (settings?.showBtnEqualizer ?? true) && (
           <button
             onClick={onEqualizer}
-            title={isEqualizerOpen ? 'Zamknij equalizer' : 'Equalizer'}
+            title={isEqualizerOpen ? t('closeEqualizer', { ns: 'player' }) : t('equalizer', { ns: 'player' })}
             className={`hidden md:flex p-2 rounded-full border transition-colors ${
               isEqualizerOpen
                 ? 'accent-border accent-text accent-bg'
@@ -217,17 +272,27 @@ export default function PlayerBar({
         )}
 
         <div ref={volumeWrapRef} className="flex items-center gap-2">
-          <button onClick={() => setIsMuted(m => !m)} className="text-zinc-500 hover:text-white transition-colors">
-            {isMuted || volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          <button
+            onClick={() => radioActive ? radio.setIsMuted(m => !m) : setIsMuted(m => !m)}
+            className="text-zinc-500 hover:text-white transition-colors"
+          >
+            {(radioActive ? (radio.isMuted || radio.volume === 0) : (isMuted || volume === 0))
+              ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
           <input
             type="range" min="0" max="100"
-            value={isMuted ? 0 : volume}
-            onChange={e => { setVolume(Number(e.target.value)); setIsMuted(false); }}
+            value={radioActive ? (radio.isMuted ? 0 : radio.volume) : (isMuted ? 0 : volume)}
+            onChange={e => {
+              const v = Number(e.target.value);
+              if (radioActive) { radio.setVolume(v); radio.setIsMuted(false); }
+              else { setVolume(v); setIsMuted(false); }
+            }}
             className="w-22 w-[88px] h-1.5 rounded-full appearance-none cursor-pointer bg-zinc-800"
             style={{ accentColor: 'var(--accent-from)' }}
           />
-          <span className="text-[10px] text-zinc-700 w-7 tabular-nums">{isMuted ? 0 : volume}%</span>
+          <span className="text-[10px] text-zinc-700 w-7 tabular-nums">
+            {radioActive ? (radio.isMuted ? 0 : radio.volume) : (isMuted ? 0 : volume)}%
+          </span>
         </div>
       </div>
     </div>

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ListPlus, Play, Trash2, Pencil, Music2, X, Check, Shuffle, Volume2 } from 'lucide-react';
 import { getCoverSrc, COVER_PLACEHOLDER, pluralTracks } from '../../utils';
 
 export default function PlaylistsView({ library, playlists, onCreatePlaylist, onDeletePlaylist, onRenamePlaylist, currentSong, onPlay, onContextMenu }) {
+  const { t } = useTranslation(['common', 'library']);
   const [showCreate, setShowCreate] = useState(false);
   const [newName,    setNewName]    = useState('');
   const [editingId,  setEditingId]  = useState(null);
@@ -31,12 +33,12 @@ export default function PlaylistsView({ library, playlists, onCreatePlaylist, on
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-3xl font-black uppercase tracking-tight">Listy odtwarzania</h2>
-          <p className="text-xs text-zinc-500 mt-1">{playlists.length} {playlists.length === 1 ? 'lista' : playlists.length < 5 ? 'listy' : 'list'}</p>
+          <h2 className="text-3xl font-black uppercase tracking-tight">{t('playlistsTitle', { ns: 'library' })}</h2>
+          <p className="text-xs text-zinc-500 mt-1">{t('playlistCount', { ns: 'common', count: playlists.length })}</p>
         </div>
         <button onClick={() => setShowCreate(s => !s)}
           className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all accent-gradient hover:opacity-90 shadow-md">
-          <ListPlus size={16} /> Nowa playlista
+          <ListPlus size={16} /> {t('newPlaylist', { ns: 'library' })}
         </button>
       </div>
 
@@ -47,7 +49,7 @@ export default function PlaylistsView({ library, playlists, onCreatePlaylist, on
             value={newName}
             onChange={e => setNewName(e.target.value)}
             autoFocus
-            placeholder="Nazwa playlisty…"
+            placeholder={t('playlistNamePlaceholderDots', { ns: 'library' })}
             className="flex-1 bg-transparent text-sm focus:outline-none text-white placeholder-zinc-600"
           />
           <button type="submit" className="text-green-400 hover:text-green-300 transition-colors"><Check size={18} /></button>
@@ -58,7 +60,7 @@ export default function PlaylistsView({ library, playlists, onCreatePlaylist, on
       {playlists.length === 0 && !showCreate ? (
         <div className="text-center py-24 text-zinc-600">
           <ListPlus size={48} className="mx-auto mb-3 opacity-20" />
-          <p className="text-sm">Brak playlist. Utwórz pierwszą powyżej.</p>
+          <p className="text-sm">{t('noPlaylistsCreateFirst', { ns: 'library' })}</p>
         </div>
       ) : (
         <div className="flex gap-6 flex-col lg:flex-row">
@@ -94,7 +96,7 @@ export default function PlaylistsView({ library, playlists, onCreatePlaylist, on
                     ) : (
                       <p className="font-semibold text-sm truncate">{pl.name}</p>
                     )}
-                    <p className="text-xs text-zinc-500 mt-0.5">{pluralTracks(songs.length)}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">{pluralTracks(songs.length, t)}</p>
                   </div>
 
                   {/* Akcje */}
@@ -125,12 +127,12 @@ export default function PlaylistsView({ library, playlists, onCreatePlaylist, on
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-black">{activePlaylist.name}</h3>
-                  <p className="text-xs text-zinc-500">{pluralTracks(activeSongs.length)}</p>
+                  <p className="text-xs text-zinc-500">{pluralTracks(activeSongs.length, t)}</p>
                 </div>
                 {activeSongs.length > 0 && (
                   <button onClick={() => onPlay(activeSongs[0], activeSongs)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold accent-gradient hover:opacity-90">
-                    <Play size={12} /> Odtwórz
+                    <Play size={12} /> {t('play', { ns: 'common' })}
                   </button>
                 )}
               </div>
@@ -138,8 +140,8 @@ export default function PlaylistsView({ library, playlists, onCreatePlaylist, on
               {activeSongs.length === 0 ? (
                 <div className="text-center py-16 text-zinc-600 border border-dashed border-zinc-800 rounded-xl">
                   <Music2 size={36} className="mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">Playlista jest pusta.</p>
-                  <p className="text-xs mt-1">Kliknij prawym przyciskiem utwór i wybierz „Dodaj do playlisty".</p>
+                  <p className="text-sm">{t('playlistEmpty', { ns: 'library' })}</p>
+                  <p className="text-xs mt-1">{t('playlistAddHint', { ns: 'library' })}</p>
                 </div>
               ) : (
                 <div className="space-y-0.5">

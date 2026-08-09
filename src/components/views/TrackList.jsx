@@ -1,4 +1,5 @@
 import React, { useCallback, memo, useState, useMemo, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Play, Volume2, Heart, MoreVertical, Music2, ChevronUp, ChevronDown, ChevronsUpDown, Star, Tag } from 'lucide-react';
 import { formatTime, getCoverSrc, COVER_PLACEHOLDER } from '../../utils';
 
@@ -118,6 +119,7 @@ function SortHeader({ label, field, sort, onSort, className = '' }) {
 }
 
 export default function TrackList({ songs, currentSong, isPlaying, compact, onPlay, onFavorite, onContextMenu, emptyMessage, showSort = true, onBulkEdit, autoScrollCurrent = false, animationsEnabled = true }) {
+  const { t } = useTranslation(['common', 'library']);
   const [sort, setSort] = useState({ field: null, dir: 'asc' });
   const [selected, setSelected] = useState(new Set());
   const currentRowRef = useRef(null);
@@ -177,7 +179,7 @@ export default function TrackList({ songs, currentSong, isPlaying, compact, onPl
     return (
       <div className="text-center text-zinc-600 py-24">
         <Music2 size={48} className="mx-auto mb-4 opacity-20" />
-        <p className="text-sm">{emptyMessage || 'Brak utworów.'}</p>
+        <p className="text-sm">{emptyMessage || t('noTracks', { ns: 'common' })}</p>
       </div>
     );
   }
@@ -187,13 +189,13 @@ export default function TrackList({ songs, currentSong, isPlaying, compact, onPl
       {/* Pasek zaznaczenia wielu */}
       {selected.size > 0 && (
         <div className="flex items-center gap-3 px-3 py-2 mb-2 bg-zinc-900/80 border border-accent/35 rounded-xl text-xs shadow-[0_0_18px_rgba(0,0,0,0.25)]">
-          <span className="accent-text font-semibold">{selected.size} zaznaczonych</span>
+          <span className="accent-text font-semibold">{t('selectedCount', { ns: 'common', count: selected.size })}</span>
           <button onClick={() => onBulkEdit?.(selectedSongs)}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg accent-gradient text-white font-medium">
-            <Tag size={11} /> Edytuj tagi
+            <Tag size={11} /> {t('editTags', { ns: 'library' })}
           </button>
           <button onClick={clearSelection} className="ml-auto text-zinc-500 hover:text-zinc-300 transition-colors">
-            Anuluj
+            {t('cancel', { ns: 'common' })}
           </button>
         </div>
       )}
@@ -202,20 +204,20 @@ export default function TrackList({ songs, currentSong, isPlaying, compact, onPl
         <div className="flex items-center gap-3 px-3 pb-2 border-b border-zinc-800/50 mb-1">
           <div className="w-7 flex-shrink-0" />
           {!compact && <div className="w-9 flex-shrink-0" />}
-          <SortHeader label="Tytuł" field="title" sort={sort} onSort={handleSort}
+          <SortHeader label={t('title', { ns: 'common' })} field="title" sort={sort} onSort={handleSort}
             className={compact ? 'w-[35%] flex-shrink-0' : 'w-[30%] flex-shrink-0'} />
-          <SortHeader label="Artysta" field="artist" sort={sort} onSort={handleSort}
+          <SortHeader label={t('artist', { ns: 'common' })} field="artist" sort={sort} onSort={handleSort}
             className="hidden sm:flex w-[22%] flex-shrink-0" />
-          <SortHeader label="Album" field="album" sort={sort} onSort={handleSort}
+          <SortHeader label={t('album', { ns: 'common' })} field="album" sort={sort} onSort={handleSort}
             className="hidden md:flex flex-1" />
-          <SortHeader label="Rok" field="year" sort={sort} onSort={handleSort}
+          <SortHeader label={t('year', { ns: 'common' })} field="year" sort={sort} onSort={handleSort}
             className="hidden lg:flex w-10 justify-end" />
-          <SortHeader label="Czas" field="duration" sort={sort} onSort={handleSort}
+          <SortHeader label={t('duration', { ns: 'common' })} field="duration" sort={sort} onSort={handleSort}
             className="w-9 justify-end" />
           <div className="w-14 flex-shrink-0" />
         </div>
       )}
-      <p className="text-[10px] text-zinc-700 px-3 mb-1">Ctrl+klik aby zaznaczyć wiele</p>
+      <p className="text-[10px] text-zinc-700 px-3 mb-1">{t('multiSelectHint', { ns: 'library' })}</p>
       <div className="space-y-0.5">
         {sorted.map((song, i) => (
           <TrackRow

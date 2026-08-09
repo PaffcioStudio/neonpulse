@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Upload, Download, ListMusic, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
 const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 'http:')
@@ -6,6 +7,7 @@ const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 
 
 // ── Import ────────────────────────────────────────────────────────
 function ImportTab({ onImported, onClose }) {
+  const { t } = useTranslation(['modals', 'common']);
   const [dragging,  setDragging]  = useState(false);
   const [importing, setImporting] = useState(false);
   const [result,    setResult]    = useState(null); // { name, songIds, missing }
@@ -26,11 +28,11 @@ function ImportTab({ onImported, onClose }) {
         body: JSON.stringify({ content, filename: file.name }),
       });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      if (!r.ok) throw new Error(data.error || t('importError', { ns: 'modals' }));
       setResult(data);
       setPlName(data.name || file.name.replace(/\.[^.]+$/, ''));
     } catch (e) {
-      setError(e.message || 'Błąd importu');
+      setError(e.message || t('importError', { ns: 'modals' }));
     } finally {
       setImporting(false);
     }
@@ -66,8 +68,8 @@ function ImportTab({ onImported, onClose }) {
           ? <Loader2 size={28} className="animate-spin text-accent" />
           : <Upload size={28} className="text-zinc-500" />}
         <div className="text-center">
-          <p className="text-sm text-zinc-300 font-medium">Upuść plik lub kliknij</p>
-          <p className="text-xs text-zinc-600 mt-1">M3U · M3U8 · PLS · XSPF</p>
+          <p className="text-sm text-zinc-300 font-medium">{t('dropFileOrClick', { ns: 'modals' })}</p>
+          <p className="text-xs text-zinc-600 mt-1">{t('supportedFormats', { ns: 'modals' })}</p>
         </div>
       </div>
 
@@ -81,12 +83,12 @@ function ImportTab({ onImported, onClose }) {
         <div className="space-y-3">
           <div className="px-3 py-2.5 rounded-xl bg-zinc-800/60 border border-zinc-700/40 text-xs space-y-1">
             <div className="flex justify-between text-zinc-300">
-              <span>Znalezione w bibliotece</span>
+              <span>{t('foundInLibrary', { ns: 'modals' })}</span>
               <span className="text-green-400 font-semibold">{result.songIds.length}</span>
             </div>
             {result.missing.length > 0 && (
               <div className="flex justify-between text-zinc-500">
-                <span>Brak w bibliotece</span>
+                <span>{t('missingInLibrary', { ns: 'modals' })}</span>
                 <span className="text-amber-400">{result.missing.length}</span>
               </div>
             )}
@@ -95,13 +97,14 @@ function ImportTab({ onImported, onClose }) {
           {result.songIds.length > 0 && (
             <div>
               <label className="block text-[11px] text-zinc-500 font-medium mb-1 uppercase tracking-wide">
-                Nazwa playlisty
+                {t('playlistNameLabel', { ns: 'modals' })}
               </label>
               <input
                 autoFocus
                 value={plName}
                 onChange={e => setPlName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleConfirm()}
+                placeholder={t('playlistNamePlaceholder', { ns: 'modals' })}
                 className="w-full bg-black/40 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white
                            focus:outline-none focus:border-accent/60 transition-colors"
               />
@@ -115,7 +118,7 @@ function ImportTab({ onImported, onClose }) {
                        disabled:opacity-40 flex items-center justify-center gap-2"
           >
             <CheckCircle2 size={14} />
-            Importuj playlistę ({result.songIds.length} utworów)
+            {t('importPlaylistButton', { ns: 'modals' }).replace('{{count}}', result.songIds.length)}
           </button>
         </div>
       )}
@@ -125,6 +128,7 @@ function ImportTab({ onImported, onClose }) {
 
 // ── Export ────────────────────────────────────────────────────────
 function ExportTab({ playlists }) {
+  const { t } = useTranslation(['modals', 'common']);
   const [selectedPl, setSelectedPl] = useState('');
   const [exporting,  setExporting]  = useState(false);
 
@@ -151,12 +155,12 @@ function ExportTab({ playlists }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-zinc-500">Wybierz playlistę do eksportu jako plik M3U.</p>
+      <p className="text-xs text-zinc-500">{t('exportPlaylistTitle', { ns: 'modals' })}</p>
 
       {playlists.length === 0 ? (
         <div className="text-center py-8 text-zinc-600 text-sm">
           <ListMusic size={32} className="mx-auto mb-2 opacity-30" />
-          Brak playlist do eksportu
+          {t('noPlaylistsToExport', { ns: 'modals' })}
         </div>
       ) : (
         <>
@@ -172,7 +176,7 @@ function ExportTab({ playlists }) {
               >
                 <ListMusic size={13} className="text-zinc-500 flex-shrink-0" />
                 <span className="truncate">{pl.name}</span>
-                <span className="ml-auto text-xs text-zinc-600">{pl.songIds.length} ut.</span>
+                <span className="ml-auto text-xs text-zinc-600">{pl.songIds.length} {t('tracks', { ns: 'common' })}</span>
               </button>
             ))}
           </div>
@@ -184,8 +188,8 @@ function ExportTab({ playlists }) {
                        disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {exporting
-              ? <><Loader2 size={14} className="animate-spin" /> Eksportuję…</>
-              : <><Download size={14} /> Pobierz M3U</>
+              ? <><Loader2 size={14} className="animate-spin" /> {t('exporting', { ns: 'modals' })}…</>
+              : <><Download size={14} /> {t('exportAsM3U', { ns: 'modals' })}</>
             }
           </button>
         </>
@@ -196,6 +200,7 @@ function ExportTab({ playlists }) {
 
 // ── Modal ────────────────────────────────────────────────────────
 export default function ImportExportModal({ playlists, onClose, onImported }) {
+  const { t } = useTranslation(['modals', 'common']);
   const [tab, setTab] = useState('import');
 
   return (
@@ -209,7 +214,7 @@ export default function ImportExportModal({ playlists, onClose, onImported }) {
         {/* Header */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-800">
           <ListMusic size={15} className="text-accent" />
-          <span className="font-semibold text-white text-sm">Playlisty</span>
+          <span className="font-semibold text-white text-sm">{t('playlistsModalTitle', { ns: 'modals' })}</span>
           <button onClick={onClose}
             className="ml-auto p-1.5 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors">
             <X size={15} />
@@ -218,7 +223,7 @@ export default function ImportExportModal({ playlists, onClose, onImported }) {
 
         {/* Tabs */}
         <div className="flex border-b border-zinc-800">
-          {[['import', 'Import'], ['export', 'Eksport']].map(([id, label]) => (
+          {[['import', t('importTab', { ns: 'modals' })], ['export', t('exportTab', { ns: 'modals' })]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-1 py-2.5 text-sm font-medium transition-colors
                 ${tab === id ? 'text-white border-b-2 border-accent' : 'text-zinc-500 hover:text-zinc-300'}`}>

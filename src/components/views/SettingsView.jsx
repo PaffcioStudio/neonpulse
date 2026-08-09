@@ -1,28 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { i18n, changeLanguage, AVAILABLE_LANGUAGES } from '../../i18n';
 import {
   FolderPlus, Trash2, RefreshCw, Monitor, Sliders, Music2,
   Database, Radio, ExternalLink, CheckCircle2, XCircle, Info,
-  Github, Heart, AlertTriangle
+  Github, Heart, AlertTriangle, Globe
 } from 'lucide-react';
 import { THEMES } from '../../utils';
 import EqualizerPanel from '../EqualizerPanel';
 import { ipcRenderer } from '../../ipc';
-
-const TABS = [
-  { id: 'library',      label: 'Biblioteka',  icon: Database },
-  { id: 'player',       label: 'Odtwarzacz',  icon: Music2 },
-  { id: 'general',      label: 'Ogólne',      icon: Sliders },
-  { id: 'appearance',   label: 'Wygląd',      icon: Monitor },
-  { id: 'integrations', label: 'Integracje',  icon: Radio },
-  { id: 'about',        label: 'Info',        icon: Info },
-];
-
-const VISUALIZER_MODES = [
-  { id: 'nebula', label: 'Mgławica', desc: 'Koło spektrum, fala i cząsteczki' },
-  { id: 'bars', label: 'Słupy', desc: 'Szerokie pasma reagujące na rytm' },
-  { id: 'tunnel', label: 'Tunel', desc: 'Geometryczne pierścienie basu' },
-  { id: 'aurora', label: 'Zorza', desc: 'Płynne fale średnich tonów' },
-];
 
 function formatBytes(bytes) {
   const n = Number(bytes) || 0;
@@ -38,6 +24,23 @@ function formatBytes(bytes) {
 }
 
 export default function SettingsView({ musicPaths, library, scanInfo, onAddFolder, onRemovePath, onRescan, settings, onSettingChange, lastfm, setEqGain, eqFiltersRef, EQ_FREQS }) {
+  const { t } = useTranslation(['common', 'settings']);
+
+  const TABS = [
+    { id: 'library',      label: t('library', { ns: 'common' }),  icon: Database },
+    { id: 'player',       label: t('player', { ns: 'common' }),  icon: Music2 },
+    { id: 'general',      label: t('general', { ns: 'common' }),      icon: Sliders },
+    { id: 'appearance',   label: t('appearance', { ns: 'common' }),      icon: Monitor },
+    { id: 'integrations', label: t('integrations', { ns: 'common' }),  icon: Radio },
+    { id: 'about',        label: t('about', { ns: 'common' }),        icon: Info },
+  ];
+
+  const VISUALIZER_MODES = [
+    { id: 'nebula', label: t('visualizerModes.nebula', { ns: 'settings' }), desc: t('visualizerModes.nebulaDesc', { ns: 'settings' }) },
+    { id: 'bars', label: t('visualizerModes.bars', { ns: 'settings' }), desc: t('visualizerModes.barsDesc', { ns: 'settings' }) },
+    { id: 'tunnel', label: t('visualizerModes.tunnel', { ns: 'settings' }), desc: t('visualizerModes.tunnelDesc', { ns: 'settings' }) },
+    { id: 'aurora', label: t('visualizerModes.aurora', { ns: 'settings' }), desc: t('visualizerModes.auroraDesc', { ns: 'settings' }) },
+  ];
   const [activeTab, setActiveTab]   = useState('library');
   const [visible,   setVisible]     = useState(true);
   const [animDir,   setAnimDir]     = useState(1);
@@ -63,7 +66,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
 
   const loadLfmConfig = useCallback(async () => {
     try { const r = await fetch(`${API_URL}/lastfm/config`); if (r.ok) setLfmConfig(await r.json()); } catch {}
-  }, [API_URL]);
+  }, [API_URL, t]);
   const lastfmLoadConfig = lastfm?.loadConfig;
   const toggleLastfm = lastfm?.toggleLastfm;
 
@@ -95,45 +98,45 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
   };
 
   const saveLfmConfig = async () => {
-    if (!lfmApiKey.trim() || !lfmSecret.trim()) { setLfmMsg('Uzupełnij oba pola'); return; }
+    if (!lfmApiKey.trim() || !lfmSecret.trim()) { setLfmMsg(t('lastfmFillBothFields', { ns: 'settings' })); return; }
     setLfmSaving(true); setLfmMsg('');
     try {
       const r = await fetch(`${API_URL}/lastfm/config`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiKey: lfmApiKey.trim(), apiSecret: lfmSecret.trim() }) });
-      if (r.ok) { setLfmMsg('Zapisano! Teraz kliknij Połącz z Last.fm'); await loadLfmConfig(); }
-      else setLfmMsg('Błąd zapisu');
-    } catch { setLfmMsg('Błąd połączenia'); } finally { setLfmSaving(false); }
+      if (r.ok) { setLfmMsg(t('lastfmSaved', { ns: 'settings' })); await loadLfmConfig(); }
+      else setLfmMsg(t('lastfmError', { ns: 'settings' }));
+    } catch { setLfmMsg(t('lastfmConnectionError', { ns: 'settings' })); } finally { setLfmSaving(false); }
   };
 
   const connectLastfm = () => {
-    if (!lfmConfig?.apiKey) { setLfmMsg('Najpierw zapisz API Key'); return; }
+    if (!lfmConfig?.apiKey) { setLfmMsg(t('lastfmSaveConfigFirst', { ns: 'settings' })); return; }
     const cb  = encodeURIComponent('http://localhost:3001/api/lastfm/callback');
     const url = `https://www.last.fm/api/auth/?api_key=${lfmConfig.apiKey}&cb=${cb}`;
     ipcRenderer.invoke('open-external', url);
-    setLfmMsg('Autoryzuj dostęp w przeglądarce — zakładka zamknie się automatycznie po zalogowaniu');
+    setLfmMsg(t('lastfmAuthInBrowser', { ns: 'settings' }));
   };
 
   const verifyToken = async () => {
-    if (!lfmToken.trim()) { setLfmMsg('Wklej token z URL'); return; }
+    if (!lfmToken.trim()) { setLfmMsg(t('lastfmPasteToken', { ns: 'settings' })); return; }
     setLfmSaving(true); setLfmMsg('');
     try {
       const r = await fetch(`${API_URL}/lastfm/auth`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: lfmToken.trim() }) });
       const d = await r.json();
       if (d.ok) {
-        setLfmMsg(`Zalogowano jako ${d.username} ✓`);
+        setLfmMsg(t('lastfmConnected', { ns: 'settings', username: d.username }) + ' ✓');
         await loadLfmConfig();
         await lastfmLoadConfig?.();
         toggleLastfm?.(true);
         setLfmToken('');
       }
-      else setLfmMsg(d.error || 'Błąd weryfikacji');
-    } catch { setLfmMsg('Błąd połączenia'); } finally { setLfmSaving(false); }
+      else setLfmMsg(d.error || t('lastfmVerificationError', { ns: 'settings' }));
+    } catch { setLfmMsg(t('lastfmConnectionError', { ns: 'settings' })); } finally { setLfmSaving(false); }
   };
 
   const disconnectLastfm = async () => {
     await fetch(`${API_URL}/lastfm/config`, { method: 'DELETE' });
     toggleLastfm?.(false);
     await lastfmLoadConfig?.();
-    setLfmConfig(null); setLfmMsg('Wylogowano');
+    setLfmConfig(null); setLfmMsg(t('lastfmLoggedOut', { ns: 'settings' }));
   };
 
   const checkUpdate = async () => {
@@ -160,7 +163,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
-      <h2 className="text-3xl font-black mb-6 tracking-tight">Ustawienia</h2>
+      <h2 className="text-3xl font-black mb-6 tracking-tight">{t('settings', { ns: 'common' })}</h2>
 
       {/* ─── Tab bar ─── */}
       <div className="relative flex gap-1 mb-6 bg-zinc-900/60 p-1 rounded-2xl border border-zinc-800/80">
@@ -201,21 +204,21 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
       >
 
         {activeTab === 'library' && (<>
-          <Card title="Foldery muzyki" subtitle="NeonPulse skanuje te foldery i obserwuje nowe pliki w czasie rzeczywistym"
+          <Card title={t('musicFolders', { ns: 'settings' })} subtitle={t('musicFoldersDesc', { ns: 'settings' })}
             action={
               <button onClick={onRescan} disabled={scanInfo.isScanning}
                 className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors ${
                   scanInfo.isScanning ? 'border-zinc-700 text-zinc-600 cursor-not-allowed' : 'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-white'
                 }`}>
                 <RefreshCw size={11} className={scanInfo.isScanning ? 'animate-spin' : ''} />
-                {scanInfo.isScanning ? `${scanInfo.scanned||0}/${scanInfo.total||0}` : 'Reskan'}
+                {scanInfo.isScanning ? `${scanInfo.scanned||0}/${scanInfo.total||0}` : t('rescan', { ns: 'common' })}
               </button>
             }
           >
             {musicPaths.length === 0 ? (
               <div className="border border-dashed border-zinc-800 rounded-lg py-8 text-center">
                 <Database size={28} className="mx-auto mb-2 text-zinc-700" />
-                <p className="text-sm text-zinc-600">Brak folderów. Dodaj poniżej.</p>
+                <p className="text-sm text-zinc-600">{t('addFolder', { ns: 'common' })} {t('below', { ns: 'common' })}.</p>
               </div>
             ) : (
               <div className="space-y-2 mb-4 overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: '220px' }}>
@@ -234,12 +237,17 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
               onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 18px var(--accent-glow)'}
               onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
             >
-              <FolderPlus size={16} /> Dodaj folder z muzyką
+              <FolderPlus size={16} /> {t('addMusicFolder', { ns: 'settings' })}
             </button>
           </Card>
-          <Card title="Statystyki">
+          <Card title={t('libraryStats', { ns: 'settings' })}>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[['Utwory', library.length], ['Foldery', musicPaths.length], ['Rozmiar', formatBytes(librarySize)], ['Baza', 'SQLite']].map(([label, val]) => (
+              {[
+                [t('tracks', { ns: 'settings' }), library.length], 
+                [t('folders', { ns: 'settings' }), musicPaths.length], 
+                [t('storage', { ns: 'settings' }), formatBytes(librarySize)], 
+                [t('databaseType', { ns: 'settings' }), 'SQLite']
+              ].map(([label, val]) => (
                 <div key={label} className="bg-black/30 rounded-xl p-3 text-center border border-zinc-800/40">
                   <p className="text-[10px] text-zinc-600 uppercase tracking-wide mb-1">{label}</p>
                   <p className="text-lg font-black accent-text">{val}</p>
@@ -250,30 +258,30 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
         </>)}
 
         {activeTab === 'player' && (<>
-          <Card title="Zachowanie odtwarzacza">
-            <Toggle label="Odtwarzaj ostatni utwór przy starcie" desc="Wznawia od miejsca gdzie skończyłeś"
+          <Card title={t('playerBehavior', { ns: 'settings' })}>
+            <Toggle label={t('playLastOnStart', { ns: 'settings' })} desc={t('playLastOnStartDesc', { ns: 'settings' })}
               value={s.autoPlayLast??false} onChange={v => handleSettingChange('autoPlayLast', v)} />
-            <Toggle label="Fade-in przy starcie utworu (0.8s)" desc="Delikatne wejście głośności zamiast nagłego startu"
+            <Toggle label={t('fadeInOnPlay', { ns: 'settings' })} desc={t('fadeInOnPlayDesc', { ns: 'settings' })}
               value={s.fadeInOnPlay??false} onChange={v => handleSettingChange('fadeInOnPlay', v)} />
-            <Toggle label="ReplayGain – normalizacja głośności" desc="Wyrównuje głośność między utworami na podstawie tagów ID3"
+            <Toggle label={t('replayGain', { ns: 'settings' })} desc={t('replayGainDesc', { ns: 'settings' })}
               value={s.replayGainEnabled??false} onChange={v => handleSettingChange('replayGainEnabled', v)} />
           </Card>
 
-          <Card title="Przejścia między utworami" subtitle="Gapless i Crossfade wzajemnie się wykluczają – aktywuj tylko jedno">
-            <Toggle label="Odtwarzanie bez przerw (Gapless)" desc="Minimalizuje ciszę między kolejnymi utworami"
+          <Card title={t('transitions', { ns: 'settings' })} subtitle={t('transitionsDesc', { ns: 'settings' })}>
+            <Toggle label={t('gaplessPlayback', { ns: 'settings' })} desc={t('gaplessPlaybackDesc', { ns: 'settings' })}
               value={s.gaplessPlayback??false} onChange={v => handleSettingChange('gaplessPlayback', v)} />
-            <Toggle label="Crossfade między utworami (2s)" desc="Płynne nakładanie się końca i początku – eksperymentalne"
+            <Toggle label={t('crossfade', { ns: 'settings' })} desc={t('crossfadeDesc', { ns: 'settings' })}
               value={s.crossfade??false} onChange={v => handleSettingChange('crossfade', v)} />
             {s.gaplessPlayback && s.crossfade && (
-              <Warn>Gapless i Crossfade są jednocześnie aktywne – może to powodować konflikty audio. Zostaw tylko jedną opcję włączoną.</Warn>
+              <Warn>{t('gaplessCrossfadeConflict', { ns: 'settings' })}</Warn>
             )}
           </Card>
 
-          <Card title="Domyślne ustawienia">
+          <Card title={t('defaultSettings', { ns: 'settings' })}>
             {[
-              { id:'defaultShuffle', label:'Domyślnie włącz shuffle',  desc:'Shuffle aktywny po uruchomieniu aplikacji' },
-              { id:'rememberVolume', label:'Zapamiętuj głośność',      desc:'Przywróć ostatnią głośność przy starcie' },
-              { id:'rememberQueue',  label:'Zapamiętuj kolejkę',       desc:'Przywróć kolejkę odtwarzania po restarcie' },
+              { id:'defaultShuffle', label:t('defaultShuffle', { ns: 'settings' }),  desc:t('defaultShuffleDesc', { ns: 'settings' }) },
+              { id:'rememberVolume', label:t('rememberVolume', { ns: 'settings' }),      desc:t('rememberVolumeDesc', { ns: 'settings' }) },
+              { id:'rememberQueue',  label:t('rememberQueue', { ns: 'settings' }),       desc:t('rememberQueueDesc', { ns: 'settings' }) },
             ].map(({ id, label, desc }) => (
               <Toggle key={id} label={label} desc={desc} value={s[id]??false} onChange={v => handleSettingChange(id, v)} />
             ))}
@@ -283,36 +291,63 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
         </>)}
 
         {activeTab === 'general' && (<>
-          <Card title="Ikona systemowa (Tray)" subtitle="Zarządzaj zachowaniem aplikacji w zasobniku systemowym">
-            <Toggle label="Minimalizuj do traya przy zamknięciu" desc="Zamiast zamykać, ukryj aplikację w zasobniku systemowym"
+          <Card title={t('traySettings', { ns: 'settings' })} subtitle={t('traySettingsDesc', { ns: 'settings' })}>
+            <Toggle label={t('minimizeToTray', { ns: 'settings' })} desc={t('minimizeToTrayDesc', { ns: 'settings' })}
               value={s.minimizeToTray??true} onChange={v => handleSettingChange('minimizeToTray', v)} />
-            <Toggle label="Uruchom zminimalizowany" desc="Aplikacja startuje w tle, bez widocznego okna"
+            <Toggle label={t('startMinimized', { ns: 'settings' })} desc={t('startMinimizedDesc', { ns: 'settings' })}
               value={s.startMinimized??false} onChange={v => handleSettingChange('startMinimized', v)}
-              disabled={!s.minimizeToTray} disabledReason="Wymaga włączonej opcji 'Minimalizuj do traya'" />
-            <Toggle label="Pokaż Play / Pause / Next w menu traya" desc="Kontrolki odtwarzania w kontekstowym menu traya"
+              disabled={!s.minimizeToTray} disabledReason={t('requiresMinimizeToTray', { ns: 'settings' })} />
+            <Toggle label={t('showTrayControls', { ns: 'settings' })} desc={t('showTrayControlsDesc', { ns: 'settings' })}
               value={s.showTrayControls??true} onChange={v => handleSettingChange('showTrayControls', v)}
-              disabled={!s.minimizeToTray} disabledReason="Wymaga włączonej opcji 'Minimalizuj do traya'" />
+              disabled={!s.minimizeToTray} disabledReason={t('requiresMinimizeToTray', { ns: 'settings' })} />
           </Card>
 
-          <Card title="System i integracje">
-            <Toggle label="Integracja MPRIS (Linux)" desc="Kontrola z klawiszy multimedialnych, panelu systemowego i KDE Connect"
+          <Card title={t('systemIntegrations', { ns: 'settings' })}>
+            <Toggle label={t('mprisEnabled', { ns: 'settings' })} desc={t('mprisEnabledDesc', { ns: 'settings' })}
               value={s.mprisEnabled??true} onChange={v => handleSettingChange('mprisEnabled', v)} />
+          </Card>
+
+          <Card title={t('language', { ns: 'common' })} subtitle={t('selectLanguage', { ns: 'common' })}>
+            <div className="grid grid-cols-2 gap-2">
+              {AVAILABLE_LANGUAGES.map(lang => {
+                const currentLang = i18n.language || 'pl';
+                const active = currentLang.startsWith(lang);
+                const langName = lang === 'pl' ? t('polish', { ns: 'common' }) : t('english', { ns: 'common' });
+                return (
+                  <button
+                    key={lang}
+                    onClick={() => changeLanguage(lang)}
+                    className={`text-left p-3 rounded-xl border transition-all ${
+                      active
+                        ? 'accent-bg accent-border text-white shadow-[0_0_18px_var(--accent-glow)]'
+                        : 'bg-black/25 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Globe size={16} className={active ? 'accent-text' : 'text-zinc-500'} />
+                      <span className="text-sm font-semibold">{langName}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-1">{lang.toUpperCase()}</p>
+                  </button>
+                );
+              })}
+            </div>
           </Card>
         </>)}
 
         {activeTab === 'appearance' && (<>
-          <Card title="Motyw kolorystyczny" subtitle="Zmienia kolor akcentu w całym interfejsie – natychmiast">
+          <Card title={t('theme', { ns: 'settings' })} subtitle={t('themeDesc', { ns: 'settings' })}>
             <div className="grid grid-cols-5 gap-3">
-              {THEMES.map(t => {
-                const active = (s.theme || 'fuchsia') === t.id;
+              {THEMES.map(theme => {
+                const active = (s.theme || 'fuchsia') === theme.id;
                 return (
-                  <button key={t.id} onClick={() => handleSettingChange('theme', t.id)} title={t.label}
+                  <button key={theme.id} onClick={() => handleSettingChange('theme', theme.id)} title={theme.label}
                     className={`relative aspect-square rounded-xl border-2 transition-all duration-200 overflow-hidden group ${
                       active ? 'border-white scale-[1.06]' : 'border-transparent hover:border-zinc-500 hover:scale-[1.03]'
                     }`}
                     style={{
-                      background: `linear-gradient(135deg, ${t.from}, ${t.to})`,
-                      boxShadow: active ? `0 4px 20px ${t.from}55` : undefined,
+                      background: `linear-gradient(135deg, ${theme.from}, ${theme.to})`,
+                      boxShadow: active ? `0 4px 20px ${theme.from}55` : undefined,
                     }}
                   >
                     {active && (
@@ -323,7 +358,7 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
                       </div>
                     )}
                     <div className="absolute bottom-0 left-0 right-0 py-1 bg-black/40 text-white text-[10px] font-medium text-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      {t.label}
+                      {theme.label}
                     </div>
                   </button>
                 );
@@ -331,22 +366,22 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             </div>
           </Card>
 
-          <Card title="Interfejs">
-            <Toggle label="Animacje przejść" desc="Płynne slide'y przy zmianie zakładek i widoków"
+          <Card title={t('interface', { ns: 'settings' })}>
+            <Toggle label={t('transitionAnimations', { ns: 'settings' })} desc={t('transitionAnimationsDesc', { ns: 'settings' })}
               value={s.animationsEnabled??true} onChange={v => handleSettingChange('animationsEnabled', v)} />
-            <Toggle label="Wizualizator audio" desc="Słupki częstotliwości na ekranie głównym (Web Audio API)"
+            <Toggle label={t('audioVisualizer', { ns: 'settings' })} desc={t('audioVisualizerDesc', { ns: 'settings' })}
               value={s.showVisualizer??true} onChange={v => handleSettingChange('showVisualizer', v)} />
-            <Toggle label="Tryb kompaktowy" desc="Mniejsze wiersze na listach – więcej utworów widocznych naraz"
+            <Toggle label={t('compactMode', { ns: 'settings' })} desc={t('compactModeDesc', { ns: 'settings' })}
               value={s.compactMode??false} onChange={v => handleSettingChange('compactMode', v)} />
-            <Toggle label="Kolor ambientu z okładki albumu" desc="Subtelne tło dopasowane kolorystycznie do aktualnie grającej okładki"
+            <Toggle label={t('albumColors', { ns: 'settings' })} desc={t('albumColorsDesc', { ns: 'settings' })}
               value={s.showAlbumColors??true} onChange={v => handleSettingChange('showAlbumColors', v)} />
           </Card>
 
-          <Card title="Wizualizacje" subtitle="Wybierz styl animacji na ekranie Teraz gramy">
-            <Toggle label="Prześwit wizualizacji w tle" desc="Działa razem z kolorem ambientu z okładki albumu"
+          <Card title={t('visualizerSettings', { ns: 'settings' })} subtitle={t('visualizerSettingsDesc', { ns: 'settings' })}>
+            <Toggle label={t('visualizerBackdrop', { ns: 'settings' })} desc={t('visualizerBackdropDesc', { ns: 'settings' })}
               value={s.showVisualizerBackdrop??true} onChange={v => handleSettingChange('showVisualizerBackdrop', v)}
               disabled={!s.showVisualizer || !s.showAlbumColors}
-              disabledReason={!s.showVisualizer ? 'Wymaga włączonego wizualizatora audio' : 'Wymaga włączonego koloru ambientu z okładki albumu'} />
+              disabledReason={!s.showVisualizer ? t('requiresVisualizer', { ns: 'settings' }) : t('requiresAlbumColors', { ns: 'settings' })} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {VISUALIZER_MODES.map(mode => {
                 const active = (s.visualizerMode || 'nebula') === mode.id;
@@ -382,22 +417,22 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             </div>
           </Card>
 
-          <Card title="Pasek odtwarzacza – przyciski" subtitle="Pokaż lub ukryj przyciski widoczne obok suwaka głośności">
+          <Card title={t('playerBarButtons', { ns: 'settings' })} subtitle={t('playerBarButtonsDesc', { ns: 'settings' })}>
             <Toggle
-              label="Widok odtwarzania"
-              desc="Przycisk otwierający pełnoekranowy widok z okładką, tekstem i kolejką"
+              label={t('showNowPlaying', { ns: 'settings' })}
+              desc={t('showNowPlayingDesc', { ns: 'settings' })}
               value={s.showBtnNowPlaying??false}
               onChange={v => handleSettingChange('showBtnNowPlaying', v)}
             />
             <Toggle
-              label="Equalizer"
-              desc="Przycisk otwierający szybki panel korekcji dźwięku"
+              label={t('showEqualizer', { ns: 'settings' })}
+              desc={t('showEqualizerDesc', { ns: 'settings' })}
               value={s.showBtnEqualizer??true}
               onChange={v => handleSettingChange('showBtnEqualizer', v)}
             />
             <Toggle
-              label="Wyłącznik czasowy"
-              desc="Przycisk ustawiający timer automatycznego zatrzymania odtwarzania"
+              label={t('showSleepTimer', { ns: 'settings' })}
+              desc={t('showSleepTimerDesc', { ns: 'settings' })}
               value={s.showBtnSleepTimer??true}
               onChange={v => handleSettingChange('showBtnSleepTimer', v)}
             />
@@ -405,63 +440,63 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
         </>)}
 
         {activeTab === 'integrations' && (<>
-          <Card title="Last.fm – Scrobbling" subtitle="Automatyczne zapisywanie słuchanych utworów do profilu Last.fm">
+          <Card title={t('lastfm', { ns: 'settings' })} subtitle={t('lastfmDesc', { ns: 'settings' })}>
             {lfmConfig?.hasSession ? (
               <div className="py-2">
                 <div className="flex items-center gap-2 mb-3">
                   <CheckCircle2 size={16} className="text-green-400 flex-shrink-0" />
-                  <span className="text-sm text-green-400 font-medium">Zalogowany jako <strong>{lfmConfig.username}</strong></span>
+                  <span className="text-sm text-green-400 font-medium">{t('lastfmConnected', { ns: 'settings', username: lfmConfig.username })}</span>
                 </div>
                 <Toggle
-                  label="Scrobbling Last.fm"
-                  desc="Wysyła aktualnie odtwarzany utwór i zapisuje odsłuch po przekroczeniu progu scrobble"
+                  label={t('lastfmScrobbling', { ns: 'settings' })}
+                  desc={t('lastfmScrobblingDesc', { ns: 'settings' })}
                   value={lastfm?.lastfmOn ?? true}
                   onChange={v => lastfm?.toggleLastfm?.(v)}
                 />
                 <button onClick={disconnectLastfm} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-red-400 bg-red-400/10 hover:bg-red-400/20 transition-colors">
-                  <XCircle size={12} /> Wyloguj z Last.fm
+                  <XCircle size={12} /> {t('lastfmDisconnect', { ns: 'settings' })}
                 </button>
               </div>
             ) : (
               <div className="space-y-3 py-2">
                 <p className="text-xs text-zinc-500">
-                  Potrzebujesz darmowego konta na{' '}
+                  {t('lastfmNeedAccountPart1', { ns: 'settings' })}
                   <a onClick={() => ipcRenderer.invoke('open-external', 'https://www.last.fm/api/account/create')} className="accent-text hover:underline inline-flex items-center gap-0.5 cursor-pointer">last.fm <ExternalLink size={10} /></a>
-                  {' '}i własnego API Key.
+                  {t('lastfmNeedAccountPart2', { ns: 'settings' })}
                 </p>
                 <div className="grid grid-cols-1 gap-2">
                   <div>
-                    <label className="text-[11px] text-zinc-500 mb-1 block">API Key</label>
-                    <input value={lfmApiKey} onChange={e => setLfmApiKey(e.target.value)} placeholder="32-znakowy klucz API"
+                    <label className="text-[11px] text-zinc-500 mb-1 block">{t('lastfmApiKey', { ns: 'settings' })}</label>
+                    <input value={lfmApiKey} onChange={e => setLfmApiKey(e.target.value)} placeholder={t('lastfmApiKeyPlaceholder', { ns: 'settings' })}
                       className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
                   </div>
                   <div>
-                    <label className="text-[11px] text-zinc-500 mb-1 block">Shared Secret</label>
-                    <input value={lfmSecret} onChange={e => setLfmSecret(e.target.value)} type="password" placeholder="Shared secret"
+                    <label className="text-[11px] text-zinc-500 mb-1 block">{t('lastfmSharedSecret', { ns: 'settings' })}</label>
+                    <input value={lfmSecret} onChange={e => setLfmSecret(e.target.value)} type="password" placeholder={t('lastfmSharedSecretPlaceholder', { ns: 'settings' })}
                       className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
                   </div>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={saveLfmConfig} disabled={lfmSaving}
                     className="px-3 py-1.5 rounded-lg text-xs bg-zinc-700 hover:bg-zinc-600 text-white disabled:opacity-50 transition-colors">
-                    {lfmSaving ? 'Zapisuję…' : 'Zapisz klucze'}
+                    {lfmSaving ? t('saving', { ns: 'common' }) : t('lastfmSaveKeys', { ns: 'settings' })}
                   </button>
                   {lfmConfig?.apiKey && (
                     <button onClick={connectLastfm}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs accent-bg accent-text border accent-border transition-colors">
-                      <ExternalLink size={11} /> Połącz z Last.fm
+                      <ExternalLink size={11} /> {t('lastfmConnect', { ns: 'settings' })}
                     </button>
                   )}
                 </div>
                 {lfmConfig?.apiKey && (
                   <div>
-                    <p className="text-[11px] text-zinc-500 mb-1">Po autoryzacji wklej token z URL (parametr <code className="text-zinc-400">token=...</code>):</p>
+                    <p className="text-[11px] text-zinc-500 mb-1">{t('lastfmEnterToken', { ns: 'settings', token: <code className="text-zinc-400">token=...</code> })}</p>
                     <div className="flex gap-2">
-                      <input value={lfmToken} onChange={e => setLfmToken(e.target.value)} placeholder="token z URL"
+                      <input value={lfmToken} onChange={e => setLfmToken(e.target.value)} placeholder={t('lastfmPasteToken', { ns: 'settings' })}
                         className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
                       <button onClick={verifyToken} disabled={lfmSaving}
                         className="px-3 py-1.5 rounded-lg text-xs accent-bg accent-text border accent-border disabled:opacity-50 transition-colors">
-                        Weryfikuj
+                        {t('lastfmVerify', { ns: 'settings' })}
                       </button>
                     </div>
                   </div>
@@ -480,31 +515,31 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             <h2 className="text-3xl font-black tracking-tight mb-1">
               <span className="accent-text">NEON</span>PULSE
             </h2>
-            <p className="text-zinc-500 text-sm mb-3">Audio Engine</p>
+            <p className="text-zinc-500 text-sm mb-3">{t('audioEngine', { ns: 'settings' })}</p>
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-zinc-800 border border-zinc-700/50 text-xs text-zinc-400 mb-1">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
-              Wersja <strong className="text-white ml-1">{appVersion}</strong>
+              {t('version', { ns: 'common' })}) <strong className="text-white ml-1">{appVersion}</strong>
             </div>
-            <p className="text-xs text-zinc-600 mt-2">Produkcja 2026</p>
+            <p className="text-xs text-zinc-600 mt-2">{t('production', { ns: 'settings', year: 2026 })}</p>
           </div>
 
-          <Card title="Autor" subtitle="Twórca projektu">
+          <Card title={t('author', { ns: 'common' })} subtitle={t('projectCreator', { ns: 'settings' })}>
             <div className="flex items-center gap-3 py-2">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0 text-white font-bold text-sm">P</div>
               <div>
                 <p className="text-sm font-semibold text-white">Paffcio</p>
-                <p className="text-xs text-zinc-500">Programista, projektant UI</p>
+                <p className="text-xs text-zinc-500">{t('developerAndUIDesigner', { ns: 'settings' })}</p>
               </div>
               <Heart size={14} className="text-red-400 ml-auto flex-shrink-0" />
             </div>
           </Card>
 
-          <Card title="Aktualizacje" subtitle="Sprawdź czy jest dostępna nowa wersja NeonPulse Player">
+          <Card title={t('updateCheck', { ns: 'settings' })} subtitle={t('updateCheckDesc', { ns: 'settings' })}>
             <div className="py-2 space-y-3">
               <button onClick={checkUpdate} disabled={checkingUpd}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-zinc-800 hover:bg-zinc-700 text-white disabled:opacity-50 transition-colors">
                 <RefreshCw size={12} className={checkingUpd ? 'animate-spin' : ''} />
-                {checkingUpd ? 'Sprawdzam…' : 'Sprawdź aktualizacje'}
+                {checkingUpd ? t('checkingForUpdates', { ns: 'settings' }) : t('checkForUpdates', { ns: 'settings' })}
               </button>
               {updateInfo && (
                 <div className={`flex items-start gap-2 p-3 rounded-xl border text-xs ${
@@ -512,51 +547,51 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
                 }`}>
                   {updateInfo.hasUpdate
                     ? <><CheckCircle2 size={14} className="text-green-400 flex-shrink-0 mt-0.5" /><div>
-                        <p className="font-medium">Dostępna wersja {updateInfo.latest}!</p>
-                        <p className="text-zinc-400 mt-0.5">Aktualna: {updateInfo.current}</p>
+                        <p className="font-medium">{t('updateAvailable', { ns: 'settings', version: updateInfo.latest })}!</p>
+                        <p className="text-zinc-400 mt-0.5">{t('currentVersion', { ns: 'settings', version: updateInfo.current })}</p>
                         <div className="flex gap-2 mt-2 flex-wrap">
                           {updateInfo.downloads?.appimage && (
                             <a onClick={() => ipcRenderer.invoke('open-external', updateInfo.downloads.appimage)}
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 cursor-pointer transition-colors">
-                              <ExternalLink size={10} /> AppImage
+                              <ExternalLink size={10} /> {t('downloadAppImage', { ns: 'settings' })}
                             </a>
                           )}
                           {updateInfo.downloads?.deb && (
                             <a onClick={() => ipcRenderer.invoke('open-external', updateInfo.downloads.deb)}
                               className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-zinc-200 cursor-pointer transition-colors">
-                              <ExternalLink size={10} /> .deb
+                              <ExternalLink size={10} /> {t('downloadDeb', { ns: 'settings' })}
                             </a>
                           )}
                           {updateInfo.pageUrl && (
                             <a onClick={() => ipcRenderer.invoke('open-external', updateInfo.pageUrl)}
                               className="inline-flex items-center gap-1 accent-text hover:underline cursor-pointer">
-                              <ExternalLink size={10} /> GitHub Release
+                              <ExternalLink size={10} /> {t('githubRelease', { ns: 'settings' })}
                             </a>
                           )}
                         </div>
                       </div></>
-                    : <><CheckCircle2 size={14} className="flex-shrink-0 mt-0.5" /><p>Masz najnowszą wersję ({updateInfo.current})</p></>
+                    : <><CheckCircle2 size={14} className="flex-shrink-0 mt-0.5" /><p>{t('upToDate', { ns: 'settings', version: updateInfo.current })}</p></>
                   }
                 </div>
               )}
             </div>
           </Card>
 
-          <Card title="Użyte technologie" subtitle="Stack technologiczny projektu">
+          <Card title={t('technologies', { ns: 'settings' })} subtitle={t('technologiesDesc', { ns: 'settings' })}>
             <div className="grid grid-cols-2 gap-2 py-2">
               {[
-                { name: 'Electron',       desc: 'Silnik aplikacji',       color: 'text-blue-400' },
-                { name: 'React 18',       desc: 'Interfejs użytkownika',  color: 'text-cyan-400' },
-                { name: 'Vite',           desc: 'Bundler / dev server',   color: 'text-yellow-400' },
-                { name: 'Tailwind CSS',   desc: 'Style i layout',         color: 'text-teal-400' },
-                { name: 'SQLite',         desc: 'Baza danych biblioteki', color: 'text-orange-400' },
-                { name: 'Express.js',     desc: 'Backend API',            color: 'text-green-400' },
-                { name: 'music-metadata', desc: 'Odczyt tagów audio',     color: 'text-pink-400' },
-                { name: 'Last.fm API',    desc: 'Scrobbling',             color: 'text-red-400' },
-                { name: 'Web Audio API',  desc: 'Wizualizacja i EQ',      color: 'text-purple-400' },
-                { name: 'MPRIS D-Bus',    desc: 'Integracja z Linux',     color: 'text-indigo-400' },
-                { name: 'Lucide React',   desc: 'Ikony',                  color: 'text-zinc-400' },
-                { name: 'Node.js',        desc: 'Środowisko wykonania',   color: 'text-lime-400' },
+                { name: 'Electron',       desc: t('electronDesc', { ns: 'settings' }),       color: 'text-blue-400' },
+                { name: 'React 18',       desc: t('reactDesc', { ns: 'settings' }),       color: 'text-cyan-400' },
+                { name: 'Vite',           desc: t('viteDesc', { ns: 'settings' }),           color: 'text-yellow-400' },
+                { name: 'Tailwind CSS',   desc: t('tailwindDesc', { ns: 'settings' }),   color: 'text-teal-400' },
+                { name: 'SQLite',         desc: t('sqliteDesc', { ns: 'settings' }),         color: 'text-orange-400' },
+                { name: 'Express.js',     desc: t('expressDesc', { ns: 'settings' }),     color: 'text-green-400' },
+                { name: 'music-metadata', desc: t('musicMetadataDesc', { ns: 'settings' }), color: 'text-pink-400' },
+                { name: 'Last.fm API',    desc: t('lastfmApiDesc', { ns: 'settings' }),    color: 'text-red-400' },
+                { name: 'Web Audio API',  desc: t('webAudioDesc', { ns: 'settings' }),  color: 'text-purple-400' },
+                { name: 'MPRIS D-Bus',    desc: t('mprisDesc', { ns: 'settings' }),    color: 'text-indigo-400' },
+                { name: 'Lucide React',   desc: t('lucideDesc', { ns: 'settings' }),   color: 'text-zinc-400' },
+                { name: 'Node.js',        desc: t('nodejsDesc', { ns: 'settings' }),        color: 'text-lime-400' },
               ].map(({ name, desc, color }) => (
                 <div key={name} className="flex items-start gap-2 p-2 rounded-lg bg-zinc-800/40 border border-zinc-700/30">
                   <span className={`text-[10px] font-bold mt-0.5 flex-shrink-0 ${color}`}>●</span>
@@ -569,14 +604,14 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
             </div>
           </Card>
 
-          <Card title="Licencja i informacje">
+          <Card title={t('info', { ns: 'settings' })} subtitle={t('infoDesc', { ns: 'settings' })}>
             <div className="py-2 space-y-2 text-xs text-zinc-500">
-              <p>NeonPulse Player jest oprogramowaniem stworzonym z pasji do muzyki i programowania.</p>
-              <p>Projekt rozwijany jako open-source. Wszelkie prawa zastrzeżone © Paffcio 2026.</p>
+              <p>{t('neonPulseDescription', { ns: 'settings' })}</p>
+              <p>{t('openSource', { ns: 'settings', year: 2026 })}</p>
               <div className="flex gap-2 mt-3 flex-wrap">
                 <a onClick={() => ipcRenderer.invoke('open-external', 'https://github.com/PaffcioStudio/neonpulse')}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer">
-                  <Github size={12} /> GitHub
+                  <Github size={12} /> {t('github', { ns: 'common' })}
                 </a>
                 <a onClick={() => ipcRenderer.invoke('open-external', 'mailto:pawelpotrykus94@gmail.com')}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer text-xs">

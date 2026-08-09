@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Mic2, FileText, RefreshCw } from 'lucide-react';
 
 const API_URL = '/api';
@@ -28,6 +29,7 @@ function findActiveLine(lines, currentTime) {
 }
 
 export default function LyricsView({ currentSong, audioRef }) {
+  const { t } = useTranslation(['player', 'common']);
   const containerRef = useRef(null);
   const activeRef    = useRef(null);
 
@@ -127,7 +129,7 @@ export default function LyricsView({ currentSong, audioRef }) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-700 py-24">
         <Mic2 size={48} className="opacity-20" />
-        <p className="text-sm">Brak aktywnego utworu</p>
+        <p className="text-sm">{t('noActiveTrack', { ns: 'player' })}</p>
       </div>
     );
   }
@@ -157,7 +159,7 @@ export default function LyricsView({ currentSong, audioRef }) {
       <div ref={containerRef} className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-32">
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-24 text-zinc-700 text-sm">
-            <RefreshCw size={14} className="animate-spin" /> Ładowanie…
+            <RefreshCw size={14} className="animate-spin" /> {t('loadingShort', { ns: 'common' })}
           </div>
         ) : parsed ? (
           /* Zsynchronizowane .lrc */
@@ -190,10 +192,9 @@ export default function LyricsView({ currentSong, audioRef }) {
           <div className="flex flex-col items-center justify-center gap-4 py-24 text-zinc-700">
             <FileText size={40} className="opacity-20" />
             <div className="text-center">
-              <p className="text-sm font-medium text-zinc-600">Brak tekstu</p>
+              <p className="text-sm font-medium text-zinc-600">{t('noLyrics', { ns: 'player' })}</p>
               <p className="text-xs text-zinc-700 mt-1">
-                Umieść plik <span className="font-mono text-zinc-600">.lrc</span> obok pliku audio<br/>
-                lub dodaj tekst (USLT) przez edytor tagów
+                {t('lyricsHintBefore', { ns: 'player' })} <span className="font-mono text-zinc-600">.lrc</span> {t('lyricsHintAfter', { ns: 'player' })}
               </p>
             </div>
           </div>

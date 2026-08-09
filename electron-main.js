@@ -49,12 +49,15 @@ const NEONPULSE_COVERS_DIR = (() => {
 
 // Zamień http://localhost:PORT/covers/file.jpg → file:///~/.neonpulse/covers/file.jpg
 // KDE Plasma widget nie pobiera okładek z localhost (loopback blokowany),
-// ale file:// działa bez problemu.
+// ale file:// działa bez problemu. Zewnętrzne http(s) URL-e (np. favicony
+// stacji radiowych z Radio-Browser) NIE mają tego problemu - KDE/GNOME
+// pobierają je normalnie przez sieć, więc te przepuszczamy bez zmian.
 function toFileArtUrl(url) {
   if (!url) return '';
   const m = url.match(/\/covers\/([^/?#]+)$/);
   if (m) return `file://${NEONPULSE_COVERS_DIR}/${m[1]}`;
-  if (url.startsWith('http')) return ''; // inny http – odpuść
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)([:/]|$)/i.test(url)) return ''; // loopback – odpuść
+  if (url.startsWith('http')) return url; // zewnętrzny URL (favicon stacji itp.) – przepuść
   if (!url.startsWith('file://')) return `file://${url}`;
   return url;
 }
@@ -225,6 +228,22 @@ async function tryInitMPRIS() {
 }
 
 // ─── TRAY MENU ────────────────────────────────────────────────
+// Tłumaczenia dla menu traya - domyślnie PL, można zaktualizować przez IPC
+let trayTranslations = {
+  play: 'Odtwarzaj',
+  pause: 'Pauza',
+  previous: 'Poprzedni',
+  next: 'Następny',
+  showHide: 'Pokaż / Ukryj',
+  quit: 'Wyjdź'
+};
+
+// Aktualizuj tłumaczenia traya z frontendu
+ipcMain.on('set-tray-translations', (event, translations) => {
+  trayTranslations = { ...trayTranslations, ...translations };
+  updateTrayMenu(true);
+});
+
 function buildTrayMenu(showControls) {
   const template = [];
 
@@ -235,19 +254,19 @@ function buildTrayMenu(showControls) {
   }
 
   if (showControls) {
-    const playLabel = currentPlayerState.isPlaying ? 'Pauza' : 'Odtwarzaj';
+    const playLabel = currentPlayerState.isPlaying ? trayTranslations.pause : trayTranslations.play;
     template.push(
       { label: playLabel,   click: () => sendCmd('playpause') },
-      { label: 'Poprzedni', click: () => sendCmd('previous')  },
-      { label: 'Następny',  click: () => sendCmd('next')      },
+      { label: trayTranslations.previous, click: () => sendCmd('previous')  },
+      { label: trayTranslations.next,     click: () => sendCmd('next')      },
       { type: 'separator' }
     );
   }
 
   template.push(
-    { label: 'Pokaż / Ukryj', click: () => toggleWindow() },
+    { label: trayTranslations.showHide, click: () => toggleWindow() },
     { type: 'separator' },
-    { label: 'Wyjdź', click: () => { app.isQuitting = true; app.quit(); } }
+    { label: trayTranslations.quit, click: () => { app.isQuitting = true; app.quit(); } }
   );
 
   return Menu.buildFromTemplate(template);
@@ -307,7 +326,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      webSecurity: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
 

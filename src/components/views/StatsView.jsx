@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BarChart2, TrendingUp, Clock, Music2, RefreshCw, Play, Calendar, Heart } from 'lucide-react';
 import { getCoverSrc, COVER_PLACEHOLDER, formatTime } from '../../utils';
 
@@ -27,7 +28,7 @@ function formatDate(isoDay) {
   return `${d}.${m}`;
 }
 
-function MiniBarChart({ data, maxVal }) {
+function MiniBarChart({ data, maxVal, t }) {
   if (!data?.length) return null;
   const peak = maxVal || Math.max(...data.map(d => d.count), 1);
   return (
@@ -37,7 +38,7 @@ function MiniBarChart({ data, maxVal }) {
           <div
             className="w-full rounded-sm accent-progress opacity-70 group-hover:opacity-100 transition-opacity"
             style={{ height: `${Math.max(2, (d.count / peak) * 56)}px` }}
-            title={`${d.day}: ${d.count} odtworzeń`}
+            title={t('statsView.chartTitle', { ns: 'library', day: d.day, count: d.count })}
           />
         </div>
       ))}
@@ -46,6 +47,7 @@ function MiniBarChart({ data, maxVal }) {
 }
 
 export default function StatsView({ currentSong, onPlay, onContextMenu }) {
+  const { t } = useTranslation(['library', 'common']);
   const [tab,      setTab]      = useState('top');
   const [summary,  setSummary]  = useState(null);
   const [top,      setTop]      = useState([]);
@@ -81,11 +83,11 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
   useEffect(() => { load(); }, [load]);
 
   const TABS = [
-    { id: 'top',      label: 'Top 50',       icon: TrendingUp },
-    { id: 'artists',  label: 'Artyści',      icon: Music2     },
-    { id: 'albums',   label: 'Albumy',       icon: BarChart2  },
-    { id: 'daily',    label: 'Historia',     icon: Calendar   },
-    { id: 'unplayed', label: 'Nie słuchane', icon: Clock      },
+    { id: 'top',      label: t('statsView.top50', { ns: 'library' }),       icon: TrendingUp },
+    { id: 'artists',  label: t('statsView.artists', { ns: 'library' }),      icon: Music2     },
+    { id: 'albums',   label: t('statsView.albums', { ns: 'library' }),       icon: BarChart2  },
+    { id: 'daily',    label: t('statsView.history', { ns: 'library' }),     icon: Calendar   },
+    { id: 'unplayed', label: t('statsView.unplayed', { ns: 'library' }), icon: Clock      },
   ];
 
   return (
@@ -93,7 +95,7 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
       {/* Header */}
       <div className="flex items-center gap-3 px-6 pt-6 pb-4 flex-shrink-0">
         <BarChart2 size={18} className="text-accent" />
-        <h2 className="text-lg font-bold text-white">Statystyki</h2>
+        <h2 className="text-lg font-bold text-white">{t('statsView.title', { ns: 'library' })}</h2>
         <button onClick={load} className="ml-auto p-2 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
@@ -103,14 +105,14 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-6 mb-4 flex-shrink-0">
           {[
-            { label: 'Odtworzenia dziś',    value: summary.todayPlays,             sub: 'odtworzeń',           icon: Play     },
-            { label: 'Uruchomienia dziś',   value: summary.launchesToday,          sub: 'razy otwarto',        icon: RefreshCw },
-            { label: 'Ten tydzień',         value: summary.thisWeek,               sub: 'odtworzeń',           icon: Calendar },
-            { label: 'Łącznie odtworzeń',   value: summary.totalPlays,             sub: 'wszystkich',          icon: Music2   },
-            { label: 'Czas słuchania',      value: formatHours(summary.totalTime), sub: 'łącznie',             icon: Clock    },
-            { label: 'Śr. dzienna sesja',   value: formatHours(summary.avgSessionLength), sub: 'na dzień',     icon: BarChart2 },
-            { label: 'Rozmiar biblioteki',  value: formatSize(summary.totalSize),  sub: 'na dysku',            icon: TrendingUp },
-            { label: 'Ulubione',            value: summary.favoritesCount,         sub: 'utworów',             icon: Heart    },
+            { label: t('statsView.playsToday', { ns: 'library' }),    value: summary.todayPlays,             sub: t('statsView.plays', { ns: 'library' }),           icon: Play     },
+            { label: t('statsView.launchesToday', { ns: 'library' }),   value: summary.launchesToday,          sub: t('statsView.openedTimes', { ns: 'library' }),        icon: RefreshCw },
+            { label: t('statsView.thisWeek', { ns: 'library' }),         value: summary.thisWeek,               sub: t('statsView.plays', { ns: 'library' }),           icon: Calendar },
+            { label: t('statsView.totalPlays', { ns: 'library' }),   value: summary.totalPlays,             sub: t('statsView.all', { ns: 'library' }),          icon: Music2   },
+            { label: t('statsView.listeningTime', { ns: 'library' }),      value: formatHours(summary.totalTime), sub: t('statsView.total', { ns: 'library' }),             icon: Clock    },
+            { label: t('statsView.avgDailySession', { ns: 'library' }),   value: formatHours(summary.avgSessionLength), sub: t('statsView.perDay', { ns: 'library' }),     icon: BarChart2 },
+            { label: t('statsView.librarySize', { ns: 'library' }),  value: formatSize(summary.totalSize),  sub: t('statsView.onDisk', { ns: 'library' }),            icon: TrendingUp },
+            { label: t('statsView.favorites', { ns: 'library' }),            value: summary.favoritesCount,         sub: t('statsView.tracks', { ns: 'library' }),             icon: Heart    },
           ].map(({ label, value, icon: Icon, sub }) => (
             <div key={label} className="bg-zinc-800/40 border border-zinc-700/40 rounded-xl p-3">
               <div className="flex items-center gap-2 mb-1">
@@ -144,11 +146,11 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
         {tab === 'artists' && (
           <div className="space-y-1">
             {loading ? (
-              <p className="text-zinc-600 text-sm text-center py-12">Ładowanie…</p>
+              <p className="text-zinc-600 text-sm text-center py-12">{t('loadingShort', { ns: 'common' })}</p>
             ) : artists.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-16 text-zinc-700">
                 <Music2 size={40} className="opacity-20" />
-                <p className="text-sm">Brak historii odtworzeń</p>
+                <p className="text-sm">{t('statsView.noHistory', { ns: 'library' })}</p>
               </div>
             ) : artists.map((a, i) => {
               const pct = (a.play_count / (artists[0]?.play_count || 1)) * 100;
@@ -160,8 +162,15 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
                   <span className={`w-6 text-center text-xs tabular-nums font-bold flex-shrink-0 ${
                     i === 0 ? 'text-yellow-400' : i === 1 ? 'text-zinc-400' : i === 2 ? 'text-orange-600' : 'text-zinc-700'
                   }`}>{i + 1}</span>
-                  <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700/50 flex items-center justify-center flex-shrink-0">
-                    <Music2 size={14} className="text-zinc-600" />
+                  <div className="w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700/50 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                    {a.cover ? (
+                      <img
+                        src={getCoverSrc(a.cover)}
+                        onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                        alt="" className="w-full h-full object-cover"
+                      />
+                    ) : null}
+                    <Music2 size={14} className="text-zinc-600" style={{ display: a.cover ? 'none' : 'flex' }} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-semibold text-white truncate">{a.artist}</p>
@@ -169,7 +178,7 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
                       <div className="flex-1 bg-zinc-800/60 rounded-full h-1 overflow-hidden">
                         <div className="h-full accent-progress rounded-full" style={{ width: `${pct}%` }} />
                       </div>
-                      <span className="text-[10px] text-zinc-600 flex-shrink-0">{a.track_count} tr.</span>
+                      <span className="text-[10px] text-zinc-600 flex-shrink-0">{a.track_count} {t('tracksShort', { ns: 'common' })}</span>
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -186,11 +195,11 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
         {tab === 'albums' && (
           <div className="space-y-1">
             {loading ? (
-              <p className="text-zinc-600 text-sm text-center py-12">Ładowanie…</p>
+              <p className="text-zinc-600 text-sm text-center py-12">{t('loadingShort', { ns: 'common' })}</p>
             ) : albums.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-16 text-zinc-700">
                 <BarChart2 size={40} className="opacity-20" />
-                <p className="text-sm">Brak historii odtworzeń</p>
+                <p className="text-sm">{t('statsView.noHistory', { ns: 'library' })}</p>
               </div>
             ) : albums.map((a, i) => {
               const pct = (a.play_count / (albums[0]?.play_count || 1)) * 100;
@@ -229,12 +238,12 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
         {tab === 'top' && (
           <div className="space-y-1">
             {loading ? (
-              <p className="text-zinc-600 text-sm text-center py-12">Ładowanie…</p>
+              <p className="text-zinc-600 text-sm text-center py-12">{t('loadingShort', { ns: 'common' })}</p>
             ) : top.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-16 text-zinc-700">
                 <TrendingUp size={40} className="opacity-20" />
-                <p className="text-sm">Brak historii odtworzeń</p>
-                <p className="text-xs text-zinc-700">Zacznij słuchać muzyki — statystyki pojawią się tutaj</p>
+                <p className="text-sm">{t('statsView.noHistory', { ns: 'library' })}</p>
+                <p className="text-xs text-zinc-700">{t('statsView.startListening', { ns: 'library' })}</p>
               </div>
             ) : top.map((song, i) => (
               <div key={song.id}
@@ -269,7 +278,7 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
         {tab === 'daily' && (
           <div>
             <div className="flex items-center gap-3 mb-4">
-              <span className="text-xs text-zinc-500">Zakres:</span>
+              <span className="text-xs text-zinc-500">{t('statsView.range', { ns: 'library' })}</span>
               {[7, 14, 30, 90].map(d => (
                 <button key={d} onClick={() => setDays(d)}
                   className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
@@ -281,20 +290,20 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
             </div>
 
             {loading ? (
-              <p className="text-zinc-600 text-sm text-center py-12">Ładowanie…</p>
+              <p className="text-zinc-600 text-sm text-center py-12">{t('loadingShort', { ns: 'common' })}</p>
             ) : daily.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-16 text-zinc-700">
                 <Calendar size={40} className="opacity-20" />
-                <p className="text-sm">Brak danych za ten okres</p>
+                <p className="text-sm">{t('statsView.noDataForPeriod', { ns: 'library' })}</p>
               </div>
             ) : (
               <>
                 {/* Bar chart */}
                 <div className="bg-zinc-800/30 border border-zinc-700/30 rounded-xl p-4 mb-4">
-                  <MiniBarChart data={daily} />
+                  <MiniBarChart data={daily} t={t} />
                   <div className="flex justify-between mt-2">
                     <span className="text-[10px] text-zinc-700">{formatDate(daily[0]?.day)}</span>
-                    <span className="text-[10px] text-zinc-500 text-center">odtworzenia per dzień</span>
+                    <span className="text-[10px] text-zinc-500 text-center">{t('statsView.playsPerDay', { ns: 'library' })}</span>
                     <span className="text-[10px] text-zinc-700">{formatDate(daily[daily.length-1]?.day)}</span>
                   </div>
                 </div>
@@ -324,7 +333,7 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
         {tab === 'unplayed' && (
           <div>
             <div className="flex items-center gap-3 mb-4">
-              <span className="text-xs text-zinc-500">Nie słuchane od:</span>
+              <span className="text-xs text-zinc-500">{t('statsView.notListenedSince', { ns: 'library' })}</span>
               {[14, 30, 60, 90, 180].map(d => (
                 <button key={d} onClick={() => setUnplayedDays(d)}
                   className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
@@ -336,15 +345,15 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
             </div>
 
             {loading ? (
-              <p className="text-zinc-600 text-sm text-center py-12">Ładowanie…</p>
+              <p className="text-zinc-600 text-sm text-center py-12">{t('loadingShort', { ns: 'common' })}</p>
             ) : unplayed.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-16 text-zinc-700">
                 <Clock size={40} className="opacity-20" />
-                <p className="text-sm">Wszystko niedawno słuchane 🎉</p>
+                <p className="text-sm">{t('statsView.allRecentlyPlayed', { ns: 'library' })}</p>
               </div>
             ) : (
               <div className="space-y-1">
-                <p className="text-xs text-zinc-600 mb-3">{unplayed.length} utworów nieodtwarzanych od ponad {unplayedDays} dni</p>
+                <p className="text-xs text-zinc-600 mb-3">{t('statsView.unplayedSummary', { ns: 'library', count: unplayed.length, days: unplayedDays })}</p>
                 {unplayed.map(song => (
                   <div key={song.id}
                     className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-colors group ${
@@ -365,10 +374,10 @@ export default function StatsView({ currentSong, onPlay, onContextMenu }) {
                     <div className="flex-shrink-0 text-right">
                       {song.last_played ? (
                         <p className="text-[11px] text-zinc-600">
-                          {Math.floor((Date.now()/1000 - song.last_played) / 86400)} dni temu
+                          {t('daysAgo', { ns: 'common', count: Math.floor((Date.now()/1000 - song.last_played) / 86400) })}
                         </p>
                       ) : (
-                        <p className="text-[11px] text-zinc-700 italic">nigdy</p>
+                        <p className="text-[11px] text-zinc-700 italic">{t('statsView.never', { ns: 'library' })}</p>
                       )}
                       <p className="text-[10px] text-zinc-700">{formatTime(song.duration)}</p>
                     </div>

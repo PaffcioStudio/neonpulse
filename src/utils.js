@@ -70,8 +70,10 @@ export function filterBySmartRules(list, rules) {
 }
 
 // ─── Odmiana ──────────────────────────────────────────────────
-export const pluralTracks = (n) =>
-  n === 1 ? '1 utwór' : n < 5 ? `${n} utwory` : `${n} utworów`;
+export const pluralTracks = (n, t) => {
+  if (typeof t === 'function') return t('tracksCount', { ns: 'common', count: n });
+  return n === 1 ? '1 utwór' : n < 5 ? `${n} utwory` : `${n} utworów`;
+};
 
 // ─── Dominujący kolor z okładki (canvas) ──────────────────────
 export function extractDominantColor(imgSrc, callback) {

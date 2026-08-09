@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Moon, Timer, CheckCircle2 } from 'lucide-react';
 
-const PRESETS = [
-  { label: '15 min', value: 15 },
-  { label: '30 min', value: 30 },
-  { label: '45 min', value: 45 },
-  { label: '1 godz', value: 60 },
-  { label: '1.5 godz', value: 90 },
-  { label: '2 godz', value: 120 },
-];
-
 export default function SleepTimerModal({ onClose, onSet, currentTimer, animationsEnabled = true, isClosing = false }) {
+  const { t } = useTranslation(['modals', 'common']);
+
+  const PRESETS = [
+    { label: t('preset15min', { ns: 'modals' }), value: 15 },
+    { label: t('preset30min', { ns: 'modals' }), value: 30 },
+    { label: t('preset45min', { ns: 'modals' }), value: 45 },
+    { label: t('preset1h', { ns: 'modals' }), value: 60 },
+    { label: t('preset1h30min', { ns: 'modals' }), value: 90 },
+    { label: t('preset2h', { ns: 'modals' }), value: 120 },
+  ];
   const [selected, setSelected] = useState(null);
   const [custom, setCustom] = useState('');
   const inputRef = useRef(null);
@@ -50,14 +52,14 @@ export default function SleepTimerModal({ onClose, onSet, currentTimer, animatio
           <div className="p-1.5 rounded-lg bg-indigo-500/15">
             <Moon size={15} className="text-indigo-400" />
           </div>
-          <span className="font-semibold text-white text-sm">Wyłącznik czasowy</span>
+          <span className="font-semibold text-white text-sm">{t('sleepTimerTitle', { ns: 'modals' })}</span>
           <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors">
             <X size={15} />
           </button>
         </div>
 
         <div className="px-5 py-4 space-y-4">
-          <p className="text-xs text-zinc-500">Odtwarzanie zatrzyma się automatycznie po wybranym czasie.</p>
+          <p className="text-xs text-zinc-500">{t('sleepTimerDescription', { ns: 'modals' })}</p>
 
           {/* Presety */}
           <div className="grid grid-cols-3 gap-2">
@@ -82,7 +84,7 @@ export default function SleepTimerModal({ onClose, onSet, currentTimer, animatio
                   ? 'accent-text border-accent/40 bg-accent/10'
                   : 'text-zinc-500 border-zinc-700 hover:text-zinc-300'
               }`}>
-              Własny
+              {t('customTime', { ns: 'modals' })}
             </button>
             <input
               ref={inputRef}
@@ -95,17 +97,17 @@ export default function SleepTimerModal({ onClose, onSet, currentTimer, animatio
                 setCustom(String(next));
                 setSelected('custom');
               }}
-              placeholder="minuty"
+              placeholder={t('minutes', { ns: 'modals' })}
               className="number-clean flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition-colors"
             />
-            <span className="text-xs text-zinc-600 flex-shrink-0">min</span>
+            <span className="text-xs text-zinc-600 flex-shrink-0">{t('minLabel', { ns: 'modals' })}</span>
           </div>
 
           {/* Informacja o aktywnym wyłączniku */}
           {currentTimer > 0 && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs">
               <Timer size={12} className="flex-shrink-0" />
-              Wyłącznik aktywny, pozostało {Math.ceil(currentTimer / 60)} min
+              {t('sleepTimerActive', { ns: 'modals' }).replace('{{minutes}}', Math.ceil(currentTimer / 60))}
             </div>
           )}
         </div>
@@ -114,16 +116,16 @@ export default function SleepTimerModal({ onClose, onSet, currentTimer, animatio
           {currentTimer > 0 && (
             <button onClick={handleCancel}
               className="px-4 py-2 rounded-xl text-xs text-red-400 bg-red-400/10 hover:bg-red-400/20 transition-colors">
-              Anuluj timer
+              {t('cancelSleepTimer', { ns: 'modals' })}
             </button>
           )}
           <button onClick={onClose}
             className="px-4 py-2 rounded-xl text-sm text-zinc-400 hover:text-white hover:bg-white/10 transition-colors">
-            Zamknij
+            {t('close', { ns: 'modals' })}
           </button>
           <button onClick={handleSet} disabled={!selected || (selected === 'custom' && (!custom || Number(custom) < 1 || Number(custom) > 600))}
             className="px-4 py-2 rounded-xl text-sm font-semibold accent-gradient text-white disabled:opacity-40 flex items-center gap-1.5 transition-opacity">
-            <CheckCircle2 size={13} /> Ustaw
+            <CheckCircle2 size={13} /> {t('set', { ns: 'modals' })}
           </button>
         </div>
       </div>

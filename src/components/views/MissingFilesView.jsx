@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FileX2, Trash2, RefreshCw, CheckSquare, Square, AlertTriangle } from 'lucide-react';
 
 const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 'http:')
   ? '/api' : 'http://localhost:3001/api';
 
 export default function MissingFilesView({ onLibraryChange }) {
+  const { t } = useTranslation(['library', 'common']);
   const [missing,  setMissing]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [selected, setSelected] = useState(new Set());
@@ -61,7 +63,7 @@ export default function MissingFilesView({ onLibraryChange }) {
       {/* Header */}
       <div className="flex items-center gap-3 px-6 pt-6 pb-4">
         <FileX2 size={18} className="text-accent" />
-        <h2 className="text-lg font-bold text-white">Brakujące pliki</h2>
+        <h2 className="text-lg font-bold text-white">{t('missing.title', { ns: 'library' })}</h2>
         <span className="ml-1 text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded-full">
           {missing.length}
         </span>
@@ -74,18 +76,18 @@ export default function MissingFilesView({ onLibraryChange }) {
       {done && (
         <div className="mx-6 mb-3 px-3 py-2 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-xs flex items-center gap-2">
           <CheckSquare size={13} />
-          Usunięto {done.removed} {done.removed === 1 ? 'wpis' : 'wpisy'} z biblioteki
+          {t('missing.removed', { ns: 'library', count: done.removed, unit: done.removed === 1 ? t('missing.entryOne', { ns: 'library' }) : t('missing.entryMany', { ns: 'library' }) })}
         </div>
       )}
 
       {loading ? (
         <div className="flex-1 flex items-center justify-center text-zinc-600 text-sm">
-          <RefreshCw size={16} className="animate-spin mr-2" /> Sprawdzam pliki…
+          <RefreshCw size={16} className="animate-spin mr-2" /> {t('missing.checking', { ns: 'library' })}
         </div>
       ) : missing.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-zinc-600">
           <FileX2 size={40} className="opacity-30" />
-          <p className="text-sm">Wszystkie pliki są na miejscu</p>
+          <p className="text-sm">{t('missing.allOk', { ns: 'library' })}</p>
         </div>
       ) : (
         <>
@@ -96,11 +98,11 @@ export default function MissingFilesView({ onLibraryChange }) {
               {selected.size === missing.length
                 ? <CheckSquare size={13} className="text-accent" />
                 : <Square size={13} />}
-              {selected.size === missing.length ? 'Odznacz wszystkie' : 'Zaznacz wszystkie'}
+              {selected.size === missing.length ? t('missing.deselectAll', { ns: 'library' }) : t('missing.selectAll', { ns: 'library' })}
             </button>
             <div className="ml-auto flex items-center gap-2">
               {selected.size > 0 && (
-                <span className="text-xs text-zinc-500">{selected.size} zaznaczonych</span>
+                <span className="text-xs text-zinc-500">{t('selectedCount', { ns: 'common', count: selected.size })}</span>
               )}
               <button
                 onClick={handleDelete}
@@ -108,7 +110,7 @@ export default function MissingFilesView({ onLibraryChange }) {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30
                            text-red-400 hover:text-red-300 text-xs font-medium disabled:opacity-40 transition-colors">
                 <Trash2 size={12} />
-                {deleting ? 'Usuwam…' : 'Usuń z biblioteki'}
+                {deleting ? t('duplicatesView.deleting', { ns: 'library' }) : t('missing.deleteFromLibrary', { ns: 'library' })}
               </button>
             </div>
           </div>
@@ -116,7 +118,7 @@ export default function MissingFilesView({ onLibraryChange }) {
           {/* Info */}
           <div className="mx-6 mb-3 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400/80 text-xs flex items-center gap-2">
             <AlertTriangle size={12} />
-            Te pliki są w bazie, ale nie istnieją na dysku. Możesz je usunąć z biblioteki.
+            {t('missing.info', { ns: 'library' })}
           </div>
 
           {/* List */}

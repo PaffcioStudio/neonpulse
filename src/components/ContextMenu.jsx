@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Play, SkipForward, ListOrdered, Heart, HeartOff,
   Users, Disc3, ListPlus, ChevronRight, Plus, Check, Tag,
@@ -6,6 +7,7 @@ import {
 } from 'lucide-react';
 
 export default function ContextMenu({ x, y, song, onAction, playlists = [], onRatingChange }) {
+  const { t } = useTranslation(['common', 'library', 'player']);
   const [showPlaylists, setShowPlaylists] = useState(false);
   const [newPlName, setNewPlName]         = useState('');
   const [showNewPl, setShowNewPl]         = useState(false);
@@ -70,9 +72,9 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
       <div className="py-1">
         {/* Główne akcje */}
         {[
-          ['play-now',  <Play size={13}/>,        'Odtwórz teraz'],
-          ['play-next', <SkipForward size={13}/>, 'Odtwórz jako następny'],
-          ['add-queue', <ListOrdered size={13}/>, 'Dodaj do kolejki'],
+          ['play-now',  <Play size={13}/>,        t('playNow', { ns: 'player' })],
+          ['play-next', <SkipForward size={13}/>, t('playNext', { ns: 'player' })],
+          ['add-queue', <ListOrdered size={13}/>, t('addToQueue', { ns: 'common' })],
         ].map(([action, icon, label]) => (
           <button key={action} onClick={() => onAction(action)}
             className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
@@ -88,7 +90,7 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
             className={`w-full text-left px-3 py-2 text-zinc-200 flex items-center gap-2.5 transition-colors ${showPlaylists ? 'bg-white/[0.07]' : 'hover:bg-white/[0.07]'}`}
           >
             <span className="text-zinc-500"><ListPlus size={13}/></span>
-            Dodaj do playlisty
+            {t('addToPlaylist', { ns: 'common' })}
             <ChevronRight size={11} className={`ml-auto transition-transform duration-150 ${showPlaylists ? 'rotate-90 text-zinc-400' : 'text-zinc-600'}`} />
           </button>
 
@@ -113,7 +115,7 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-zinc-600 px-3 py-2">Brak playlist</p>
+                <p className="text-xs text-zinc-600 px-3 py-2">{t('noPlaylists', { ns: 'common' })}</p>
               )}
 
               {/* Nowa playlista */}
@@ -128,7 +130,7 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
                         if (e.key === 'Enter') handleCreateAndAdd(e);
                         if (e.key === 'Escape') { setShowNewPl(false); setNewPlName(''); }
                       }}
-                      placeholder="Nazwa playlisty…"
+                      placeholder={t('playlistNamePlaceholder', { ns: 'library' })}
                       className="flex-1 bg-black/40 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                     />
                     <button
@@ -136,7 +138,7 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
                       disabled={!newPlName.trim()}
                       className="px-2 py-1 rounded-lg accent-gradient text-xs font-semibold disabled:opacity-40"
                     >
-                      OK
+                      {t('ok', { ns: 'common' })}
                     </button>
                   </div>
                 ) : (
@@ -145,7 +147,7 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
                     className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-400 hover:text-white text-xs flex items-center gap-2 transition-colors"
                   >
                     <Plus size={12} className="text-zinc-500" />
-                    Nowa playlista…
+                    {t('newPlaylist', { ns: 'library' })}…
                   </button>
                 )}
               </div>
@@ -159,15 +161,15 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
           <span className="text-zinc-500">
             {song.isFavorite ? <HeartOff size={13}/> : <Heart size={13}/>}
           </span>
-          {song.isFavorite ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+          {song.isFavorite ? t('removeFromFavorites', { ns: 'common' }) : t('addToFavorites', { ns: 'common' })}
         </button>
 
         <div className="border-t border-zinc-800 my-1" />
 
         {/* Nawigacja */}
         {[
-          ['go-artist', <Users size={13}/>,  'Przejdź do artysty'],
-          ['go-album',  <Disc3 size={13}/>,  'Przejdź do albumu'],
+          ['go-artist', <Users size={13}/>,  t('goToArtist', { ns: 'library' })],
+          ['go-album',  <Disc3 size={13}/>,  t('goToAlbum', { ns: 'library' })],
         ].map(([action, icon, label]) => (
           <button key={action} onClick={() => onAction(action)}
             className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
@@ -181,19 +183,19 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
         <button onClick={() => onAction('edit-tags')}
           className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
           <span className="text-zinc-500"><Tag size={13}/></span>
-          Edytuj tagi…
+          {t('editTags', { ns: 'library' })}…
         </button>
         <button onClick={() => onAction('fetch-cover')}
           className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
           <span className="text-zinc-500"><Disc3 size={13}/></span>
-          Pobierz okładkę…
+          {t('downloadCover', { ns: 'library' })}…
         </button>
 
         <div className="border-t border-zinc-800 my-1" />
 
         {/* Ocena */}
         <div className="px-3 py-2 flex items-center gap-1.5">
-          <span className="text-zinc-600 text-xs mr-1">Ocena:</span>
+          <span className="text-zinc-600 text-xs mr-1">{t('rating', { ns: 'common' })}:</span>
           {[1,2,3,4,5].map(n => {
             const newRating = n === localRating ? 0 : n;
             return (
@@ -202,7 +204,7 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
                 onRatingChange?.(song.id, newRating);
                 onAction(`rate-${newRating}`);
               }}
-                className="transition-all hover:scale-125">
+                className="transition-all hover:scale-125" title={`${n} ${t('star', { ns: 'player' })}`}>
                 <Star size={14} className={n <= localRating ? 'text-yellow-400 fill-yellow-400' : 'text-zinc-700 hover:text-zinc-500'} />
               </button>
             );
@@ -215,12 +217,12 @@ export default function ContextMenu({ x, y, song, onAction, playlists = [], onRa
         <button onClick={() => onAction('open-folder')}
           className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
           <span className="text-zinc-500"><FolderOpen size={13}/></span>
-          Otwórz lokalizację
+          {t('openLocation', { ns: 'library' })}
         </button>
         <button onClick={() => { navigator.clipboard?.writeText(song.path); onAction('copy-path'); }}
           className="w-full text-left px-3 py-2 hover:bg-white/[0.07] text-zinc-200 flex items-center gap-2.5 transition-colors">
           <span className="text-zinc-500"><Copy size={13}/></span>
-          Kopiuj ścieżkę
+          {t('copyPath', { ns: 'common' })}
         </button>
       </div>
     </div>

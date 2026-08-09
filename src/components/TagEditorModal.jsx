@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Save, Tag, Loader2, AlertCircle, CheckCircle2, Search, Music2, ChevronRight, RotateCcw, Check } from 'lucide-react';
 import { getCoverSrc, COVER_PLACEHOLDER } from '../utils';
 
@@ -6,9 +7,7 @@ const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 
   ? '/api'
   : 'http://localhost:3001/api';
 
-const FIELD_LABELS = { title: 'Tytuł', artist: 'Artysta', album: 'Album', genre: 'Gatunek', year: 'Rok' };
-
-function FieldDiff({ original, proposed }) {
+function FieldDiff({ original, proposed, t }) {
   const changed = proposed && proposed !== original;
   return (
     <div className="min-w-0">
@@ -16,7 +15,7 @@ function FieldDiff({ original, proposed }) {
         <div className="text-zinc-500 line-through text-[10px] truncate leading-tight">{original}</div>
       )}
       <div className={`text-xs truncate font-medium leading-tight mt-0.5 ${changed ? 'text-accent' : 'text-zinc-300'}`}>
-        {proposed || <span className="text-zinc-600 italic font-normal">brak</span>}
+        {proposed || <span className="text-zinc-600 italic font-normal">{t('noValue', { ns: 'modals' })}</span>}
       </div>
     </div>
   );
@@ -42,6 +41,7 @@ function FancyCheckbox({ checked, onChange, label, children }) {
 }
 
 export default function TagEditorModal({ song, onClose, onSaved }) {
+  const { t } = useTranslation(['modals', 'common']);
   const [fields, setFields] = useState({ title: '', artist: '', album: '', year: '', genre: '' });
   const [originalFields, setOriginalFields] = useState({});
   const [dirty,   setDirty]   = useState(false);
@@ -102,7 +102,7 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
         body:    JSON.stringify(body),
       });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Błąd serwera');
+      if (!r.ok) throw new Error(data.error || t('serverError', { ns: 'modals' }));
       setStatus('success');
       setDirty(false);
       setOriginalFields(fields);
@@ -110,7 +110,7 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
       setTimeout(() => setStatus(null), 2500);
     } catch (err) {
       setStatus('error');
-      setErrMsg(err.message || 'Nieznany błąd');
+      setErrMsg(err.message || t('unknownError', { ns: 'modals' }));
     } finally {
       setSaving(false);
     }
@@ -134,10 +134,10 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
       if (data.ok && data.results?.length) {
         setLookupResults(data.results);
       } else {
-        setLookupError(data.reason || 'Brak wyników');
+        setLookupError(data.reason || t('noResults', { ns: 'modals' }));
       }
     } catch {
-      setLookupError('Błąd połączenia z siecią');
+      setLookupError(t('networkError', { ns: 'modals' }));
     } finally {
       setLookupLoading(false);
     }
@@ -162,10 +162,10 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
 
   /* Pola formularza */
   const formFields = [
-    { key: 'title',  label: 'Tytuł',   placeholder: 'Nazwa utworu', ref: firstInputRef },
-    { key: 'artist', label: 'Artysta',  placeholder: 'Wykonawca' },
-    { key: 'album',  label: 'Album',    placeholder: 'Nazwa albumu' },
-    { key: 'genre',  label: 'Gatunek',  placeholder: 'np. Rock, Pop…' },
+    { key: 'title',  label: t('fieldLabels.title', { ns: 'modals' }),   placeholder: t('fieldPlaceholders.title', { ns: 'modals' }), ref: firstInputRef },
+    { key: 'artist', label: t('fieldLabels.artist', { ns: 'modals' }),  placeholder: t('fieldPlaceholders.artist', { ns: 'modals' }) },
+    { key: 'album',  label: t('fieldLabels.album', { ns: 'modals' }),    placeholder: t('fieldPlaceholders.album', { ns: 'modals' }) },
+    { key: 'genre',  label: t('fieldLabels.genre', { ns: 'modals' }),  placeholder: t('fieldPlaceholders.genre', { ns: 'modals' }) },
   ];
 
   return (
@@ -189,10 +189,10 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
           <div className="p-1.5 rounded-lg bg-white/5">
             <Tag size={15} className="text-accent" />
           </div>
-          <span className="font-semibold text-white text-sm">Edytor tagów</span>
+          <span className="font-semibold text-white text-sm">{t('tagEditorTitle', { ns: 'modals' })}</span>
           {lookupOpen && (
             <span className="ml-1 text-[11px] text-zinc-500 flex items-center gap-1">
-              <Music2 size={11} className="text-accent" /> Wyniki online
+              <Music2 size={11} className="text-accent" /> {t('onlineResults', { ns: 'modals' })}
             </span>
           )}
           <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-zinc-300 transition-colors">
@@ -210,7 +210,7 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
               <img
                 src={getCoverSrc(song.cover)}
                 onError={e => { e.target.src = COVER_PLACEHOLDER; }}
-                alt="okładka"
+                alt={t('coverAlt', { ns: 'modals' })}
                 className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-zinc-700/40"
               />
               <div className="min-w-0 flex-1">
@@ -218,14 +218,14 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
                 <div className="text-[11px] text-zinc-600 mt-0.5 uppercase tracking-wide">.{ext}</div>
                 {nonMp3 && (
                   <div className="text-[10px] text-amber-400/80 mt-1 flex items-center gap-1">
-                    <AlertCircle size={10} /> Tylko DB – zapis tagów w pliku wymaga MP3
+                    <AlertCircle size={10} /> {t('dbOnlyMp3Notice', { ns: 'modals' })}
                   </div>
                 )}
               </div>
               <button
                 onClick={lookupOpen ? () => setLookupOpen(false) : handleLookup}
                 disabled={lookupLoading}
-                title={lookupOpen ? 'Zamknij wyniki' : 'Wyszukaj tagi online (MusicBrainz + iTunes)'}
+                title={lookupOpen ? t('closeResults', { ns: 'modals' }) : t('searchOnline', { ns: 'modals' })}
                 className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all
                            disabled:opacity-50 disabled:cursor-not-allowed
                            ${lookupOpen
@@ -237,7 +237,7 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
                   ? <Loader2 size={12} className="animate-spin" />
                   : lookupOpen ? <X size={12} /> : <Search size={12} />
                 }
-                {lookupOpen ? 'Zamknij' : 'Szukaj online'}
+                {lookupOpen ? t('closeResults', { ns: 'modals' }) : t('searchOnline', { ns: 'modals' })}
               </button>
             </div>
 
@@ -260,18 +260,18 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
 
               <div className="flex items-end gap-3">
                 <div className="w-28">
-                  <label className="block text-[11px] text-zinc-500 font-medium mb-1 uppercase tracking-wide">Rok</label>
+                  <label className="block text-[11px] text-zinc-500 font-medium mb-1 uppercase tracking-wide">{t('fieldLabels.year', { ns: 'modals' })}</label>
                   <input
                     type="number"
                     value={fields.year}
                     onChange={e => handleChange('year', e.target.value)}
-                    placeholder="2024"
+                    placeholder={t('fieldPlaceholders.year', { ns: 'modals' })}
                     min="1900" max="2099"
                     className="w-full bg-black/40 border border-zinc-700/70 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600
                                focus:outline-none focus:border-accent/60 focus:bg-black/60 transition-colors"
                   />
                 </div>
-                <div className="text-[11px] text-zinc-600 pb-2.5">Ctrl+S aby zapisać</div>
+                <div className="text-[11px] text-zinc-600 pb-2.5">Ctrl+S {t('save', { ns: 'common' })}</div>
               </div>
             </div>
 
@@ -283,7 +283,7 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
                   : 'bg-red-500/10 border border-red-500/30 text-red-400'
               }`}>
                 {status === 'success'
-                  ? <><CheckCircle2 size={13} /> Zapisano pomyślnie</>
+                  ? <><CheckCircle2 size={13} /> {t('metadataLoaded', { ns: 'modals' })}</>
                   : <><AlertCircle size={13} /> {errMsg}</>
                 }
               </div>
@@ -294,17 +294,17 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
               {dirty && (
                 <button
                   onClick={handleReset}
-                  title="Przywróć oryginalne tagi"
+                  title={t('restoreOriginal', { ns: 'modals' })}
                   className="px-3 py-2 rounded-xl text-sm text-zinc-500 hover:text-zinc-300 hover:bg-white/10 transition-colors flex items-center gap-1.5"
                 >
-                  <RotateCcw size={13} /> Resetuj
+                  <RotateCcw size={13} /> {t('reset', { ns: 'modals' })}
                 </button>
               )}
               <button
                 onClick={onClose}
                 className="px-4 py-2 rounded-xl text-sm text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
               >
-                Anuluj
+                {t('cancel', { ns: 'modals' })}
               </button>
               <button
                 onClick={handleSave}
@@ -313,8 +313,8 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
                            disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-opacity"
               >
                 {saving
-                  ? <><Loader2 size={13} className="animate-spin" />Zapisuję…</>
-                  : <><Save size={13} />Zapisz tagi</>
+                  ? <><Loader2 size={13} className="animate-spin" />{t('saving', { ns: 'modals' })}…</>
+                  : <><Save size={13} />{t('saveTags', { ns: 'modals' })}</>
                 }
               </button>
             </div>
@@ -326,9 +326,9 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
               {/* Header prawej kolumny */}
               <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800 bg-zinc-800/30">
                 <Music2 size={13} className="text-accent flex-shrink-0" />
-                <span className="text-xs font-semibold text-zinc-200 uppercase tracking-wide">Wyniki online</span>
+                <span className="text-xs font-semibold text-zinc-200 uppercase tracking-wide">{t('onlineResults', { ns: 'modals' })}</span>
                 {lookupResults.length > 0 && (
-                  <span className="ml-auto text-[11px] text-zinc-500">{lookupResults.length} wyników</span>
+                  <span className="ml-auto text-[11px] text-zinc-500">{lookupResults.length} {t('foundInLibrary', { ns: 'modals' })}</span>
                 )}
               </div>
 
@@ -336,7 +336,7 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
               {lookupLoading && (
                 <div className="flex flex-col items-center justify-center gap-3 px-4 py-10 text-zinc-400">
                   <Loader2 size={24} className="animate-spin text-accent" />
-                  <span className="text-xs">Szukam w MusicBrainz i iTunes…</span>
+                  <span className="text-xs">{t('searchingOnline', { ns: 'modals' })}</span>
                 </div>
               )}
 
@@ -382,7 +382,7 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
                   {selectedResult && (
                     <div className="px-4 py-3 bg-zinc-800/20 border-t border-zinc-700/50 flex-1 overflow-y-auto tag-lookup-scroll">
                       <div className="text-[10px] text-zinc-500 uppercase tracking-wide mb-3 font-semibold">
-                        Które pola zastąpić
+                        {t('whichFieldsToReplace', { ns: 'modals' })}
                       </div>
                       <div className="space-y-2.5 mb-4">
                         {Object.keys(acceptedFields).map(key => (
@@ -392,9 +392,9 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
                             onChange={val => setAcceptedFields(prev => ({ ...prev, [key]: val }))}
                           >
                             <div className="text-[10px] text-zinc-500 uppercase tracking-wide leading-none mb-1">
-                              {FIELD_LABELS[key]}
+                              {t(`fieldLabels.${key}`, { ns: 'modals' })}
                             </div>
-                            <FieldDiff original={fields[key]} proposed={selectedResult[key]} />
+                            <FieldDiff original={fields[key]} proposed={selectedResult[key]} t={t} />
                           </FancyCheckbox>
                         ))}
                       </div>
@@ -402,7 +402,7 @@ export default function TagEditorModal({ song, onClose, onSaved }) {
                         onClick={handleApplyLookup}
                         className="w-full py-2 rounded-xl text-xs font-semibold accent-gradient text-white hover:opacity-90 transition-opacity"
                       >
-                        Zastosuj zaznaczone
+                        {t('applySelected', { ns: 'modals' })}
                       </button>
                     </div>
                   )}
