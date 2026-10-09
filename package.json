@@ -1,6 +1,6 @@
 {
   "name": "neonpulse-player",
-  "version": "3.6.0",
+  "version": "3.6.2",
   "productName": "NeonPulse",
   "desktopName": "pl.paffcio.neonpulse.desktop",
   "description": "NeonPulse – lokalny odtwarzacz audio z SQLite, smart playlistami i integracją z Linux",

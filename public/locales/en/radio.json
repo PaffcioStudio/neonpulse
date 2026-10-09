@@ -45,5 +45,10 @@
   "eqUnavailableForStation": "The equalizer isn't available for internet radio - most stations don't send the headers required for safe in-browser audio processing, which would risk silence instead of tone adjustment",
   "browseOpenfm": "Browse open.fm",
   "openfmListError": "Couldn't fetch the open.fm station list",
-  "added": "Added"
+  "added": "Added",
+  "selectVariant": "Select regional branch",
+  "mainBranch": "Main",
+  "iconsDownloading": "Downloading OpenFM icons",
+  "iconsDownloaded": "OpenFM icons downloaded",
+  "iconsFailed": "Some OpenFM icons failed to download (retry on next launch)"
 }

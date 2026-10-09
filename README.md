@@ -10,7 +10,7 @@
 
 **Lokalny odtwarzacz muzyki dla Linuksa, z biblioteką SQLite, MPRIS i nowoczesnym UI.**
 
-[![Wersja](https://img.shields.io/badge/wersja-3.6.0-a855f7?style=for-the-badge)](package.json)
+[![Wersja](https://img.shields.io/badge/wersja-3.6.2-a855f7?style=for-the-badge)](package.json)
 [![Linux](https://img.shields.io/badge/Linux-DEB%20%7C%20AppImage-2563eb?style=for-the-badge&logo=linux&logoColor=white)](#instalacja)
 [![Electron](https://img.shields.io/badge/Electron-28-47848f?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18-61dafb?style=for-the-badge&logo=react&logoColor=111)](https://react.dev)
@@ -46,7 +46,7 @@
 | Biblioteka | SQLite, live scan folderów, wyszukiwanie, sortowanie i widoki szczegółowe |
 | Metadane | Edycja tagów, zbiorcza edycja, oceny, okładki z MusicBrainz / Cover Art Archive |
 | Playlisty | Playlisty lokalne, smart playlisty, import M3U/PLS/XSPF i eksport M3U |
-| Radio internetowe | Stacje radiowe online (Icecast/Shoutcast), własne stacje, import z M3U/M3U8/XML, manifest predefiniowanych stacji |
+| Radio internetowe | Stacje Icecast/Shoutcast, własne stacje, import z M3U/M3U8/XML, manifest predefiniowanych stacji, warianty regionalne, open.fm (wsparcie nieoficjalne) |
 | Teksty | Pliki `.lrc`, teksty embedded i synchronizacja z postępem utworu |
 | Last.fm | Scrobbling, now playing i przełącznik integracji w ustawieniach |
 
@@ -60,6 +60,19 @@
 - Motywy kolorystyczne, ambient z okładki albumu, animacje przejść i tryb kompaktowy list.
 - Wizualizacje audio: `Mgławica`, `Słupy`, `Tunel` i `Zorza`, z opcjonalnym delikatnym prześwitem w tle widoków.
 - Pełnoekranowy widok odtwarzania z okładką, tekstem i kolejką.
+
+---
+
+## Radio Internetowe
+
+- Osobna zakładka `Stacje radiowe` w pasku bocznym, niezależna od biblioteki lokalnej plików.
+- Manifest predefiniowanych stacji (`resources/stations/manifest.json`), edytowalny bez rebuildu aplikacji — poza `.deb`/`AppImage` (`resources/stations/`), więc łatwo dopisać własne stacje po instalacji.
+- Dodawanie własnych stacji ręcznie (nazwa, URL, gatunek, ikonka) oraz import z plików M3U, M3U8 i XML.
+- Automatyczne dociąganie ikonek stacji z [Radio-Browser](https://www.radio-browser.info/) dla tych, które nie mają jej ustawionej w manifeście, plus ręczne wyszukiwanie ikonki po nazwie z podglądem wyników.
+- Warianty regionalne dla stacji sieciowych z rozszczepieniami (np. inne miasto/oddział tej samej rozgłośni) — wybór zapamiętywany trwale per stacja.
+- **Wsparcie dla [open.fm](https://open.fm) (nieoficjalne)** — przeglądanie i dodawanie dowolnej stacji z katalogu open.fm, odtwarzanej przez HLS (`hls.js`). Ponieważ open.fm nie udostępnia publicznego API, integracja korzysta z tego samego mechanizmu podpisanych, wygasających adresów strumienia co strona open.fm — token jest pobierany na nowo przy każdym odtworzeniu. Może przestać działać bez zapowiedzi, jeśli open.fm zmieni swój mechanizm autoryzacji.
+- Equalizer i wizualizacja audio są wyłączone dla radia internetowego — większość publicznych strumieni nie wysyła nagłówków CORS wymaganych do bezpiecznego przetwarzania dźwięku w przeglądarce; próba ich obejścia realnie ryzykowała wyciszeniem strumienia, więc priorytet ma zawsze działający dźwięk.
+- MPRIS i tray pokazują aktualnie graną stację (nazwa, ikonka, gatunek) tak samo jak dla utworów z biblioteki.
 
 ---
 
@@ -131,7 +144,7 @@ neonpulse/
 │   ├── hooks/                # Logika odtwarzacza i Last.fm
 │   ├── ipc.js                # Bezpieczny most IPC
 │   └── utils.js              # Pomocnicze funkcje UI i biblioteki
-├── resources/                # Ikony i metadane linuksowe
+├── resources/                # Ikony, metadane linuksowe, manifest stacji radiowych
 ├── screenshots/              # Zrzuty ekranu do README
 └── scripts/                  # Instalacja i hooki paczek
 ```

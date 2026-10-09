@@ -20,11 +20,20 @@ function loadVolume() {
 //
 // WAŻNE: ten hook celowo NIGDY nie podpina radiowego <audio> pod Web Audio
 // API (AudioContext/createMediaElementSource) - ani dla EQ, ani dla
-// wizualizacji. Próby zrobienia tego bezpiecznie (m.in. z watchdogiem na
-// zdarzeniu 'timeupdate') zawiodły w praktyce: 'timeupdate' leci nawet gdy
-// realnie nic nie słychać, więc nie da się niezawodnie wykryć wyciszenia
-// spowodowanego brakiem CORS na serwerze streamu. Skoro nie da się tego
-// zrobić bezpiecznie, nie robimy tego wcale - działający dźwięk jest
+// wizualizacji. Próbowano dwóch podejść i obie zawiodły w praktyce na
+// prawdziwych stacjach:
+//   1. Watchdog na zdarzeniu 'timeupdate' po podpięciu Web Audio, z
+//      wycofaniem się gdy cisza - zawiodło, bo 'timeupdate' leci nawet gdy
+//      faktycznie nic nie słychać.
+//   2. Predykcja: HEAD request z mode:'cors' PRZED podpięciem Web Audio, żeby
+//      sprawdzić czy serwer wysyła nagłówki CORS - zawiodło, bo część
+//      serwerów Icecast/Shoutcast nie rozróżnia metody HEAD od GET i zaczyna
+//      wysyłać strumień w odpowiedzi na sam "sprawdzający" fetch, co
+//      zakłócało bufor głównego <audio> i dawało głuche audio nawet dla
+//      stacji, które wcześniej (bez tego mechanizmu) grały normalnie.
+// Wniosek: nie da się tego zrobić bezpiecznie z poziomu klienta bez
+// współpracy serwera (własny endpoint diagnostyczny czy podobne). Skoro nie
+// da się zrobić bezpiecznie, nie robimy tego wcale - działający dźwięk jest
 // ważniejszy niż equalizer czy wizualizacja przy radiu.
 //
 // open.fm (type:"openfm") to specjalny przypadek: URL streamu jest podpisanym,
@@ -45,6 +54,13 @@ export function useRadioPlayer() {
   const lanbeatsPollRef = useRef(null);
   const hlsRef = useRef(null);
   const playTokenRef = useRef(0); // rośnie przy każdym play()/stop() - chroni przed race condition async tokenu
+  // Osobna flaga (nie hlsRef.current wprost) - podczas destroyHls()/tworzenia
+  // nowego Hls przy zmianie stacji hlsRef.current bywa chwilowo null mimo że
+  // logicznie wciąż jesteśmy "w trybie HLS". Sam Hls.destroy()/detachMedia()
+  // potrafi przy okazji wywołać natywny 'error' na <audio> - ten stan musi
+  // przetrwać cały czas trwania sesji open.fm, nie tylko gdy obiekt Hls
+  // akurat istnieje.
+  const isHlsModeRef = useRef(false);
 
   // Wyślij aktualny stan radia do procesu głównego (MPRIS + menu traya).
   // Stacja radiowa jako "title", metadane now-playing (jeśli są, np. z
@@ -90,7 +106,7 @@ export function useRadioPlayer() {
     // błędy dla streamów HLS obsługuje wyłącznie Hls.Events.ERROR (patrz
     // playHls poniżej), ten listener jest tylko dla zwykłych <audio src>.
     const onError = () => {
-      if (hlsRef.current) return;
+      if (isHlsModeRef.current) return;
       setIsLoading(false); setHasError(true); setIsPlaying(false);
     };
 
@@ -213,6 +229,7 @@ export function useRadioPlayer() {
     const myToken = ++playTokenRef.current;
 
     if (station.type === 'openfm') {
+      isHlsModeRef.current = true;
       if (!station.slug) { setHasError(true); setIsLoading(false); setIsPlaying(false); return; }
       audio.src = '';
       fetchOpenfmUrl(station.slug)
@@ -222,6 +239,7 @@ export function useRadioPlayer() {
       return;
     }
 
+    isHlsModeRef.current = false;
     if (!station.url) { setHasError(true); setIsLoading(false); setIsPlaying(false); return; }
 
     // Bez cache-bustingu w query stringu: serwery Icecast/Shoutcast (SHOUTcast v1
@@ -241,6 +259,7 @@ export function useRadioPlayer() {
 
   const stop = useCallback((opts = {}) => {
     ++playTokenRef.current; // unieważnia ewentualny trwający fetch tokenu open.fm
+    isHlsModeRef.current = false;
     destroyHls();
     const audio = audioRef.current;
     audio.pause();
@@ -260,7 +279,11 @@ export function useRadioPlayer() {
     else play(station);
   }, [isPlaying, currentStation, play, stop]);
 
-  useEffect(() => () => { stopLanbeatsPoll(); destroyHls(); audioRef.current.pause(); }, [stopLanbeatsPoll, destroyHls]);
+  useEffect(() => () => {
+    stopLanbeatsPoll();
+    destroyHls();
+    audioRef.current.pause();
+  }, [stopLanbeatsPoll, destroyHls]);
 
   return {
     currentStation, isPlaying, isLoading, hasError, nowPlaying,

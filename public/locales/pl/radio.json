@@ -47,5 +47,10 @@
   "eqUnavailableForStation": "Equalizer nie jest dostępny dla radia internetowego - większość stacji nie wysyła nagłówków wymaganych do bezpiecznego przetwarzania dźwięku w przeglądarce, co groziłoby ciszą zamiast korekcji brzmienia",
   "browseOpenfm": "Przeglądaj open.fm",
   "openfmListError": "Nie udało się pobrać listy stacji open.fm",
-  "added": "Dodano"
+  "added": "Dodano",
+  "selectVariant": "Wybierz oddział regionalny",
+  "mainBranch": "Główny",
+  "iconsDownloading": "Pobieranie ikon dla OpenFM",
+  "iconsDownloaded": "Ikony OpenFM pobrane",
+  "iconsFailed": "Części ikon OpenFM nie udało się pobrać (retry przy następnym uruchomieniu)"
 }

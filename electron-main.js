@@ -34,18 +34,18 @@ const { BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, globalShortcut,
 const path = require('path');
 const os   = require('os');
 const fs   = require('fs');
+const { pathToFileURL } = require('url');
 
 // Ścieżka do katalogu okładek – identyczna logika jak w server.js
 // Potrzebna do konwersji http://localhost/covers/... → file:///...  dla MPRIS artUrl
-const NEONPULSE_COVERS_DIR = (() => {
-  const base = process.env.NEONPULSE_DATA ||
-    (process.platform === 'win32'
-      ? path.join(process.env.APPDATA || os.homedir(), 'neonpulse')
-      : process.platform === 'darwin'
-        ? path.join(os.homedir(), 'Library', 'Application Support', 'neonpulse')
-        : path.join(os.homedir(), '.neonpulse'));
-  return path.join(base, 'covers');
-})();
+const NEONPULSE_DATA_DIR = process.env.NEONPULSE_DATA ||
+  (process.platform === 'win32'
+    ? path.join(process.env.APPDATA || os.homedir(), 'neonpulse')
+    : process.platform === 'darwin'
+      ? path.join(os.homedir(), 'Library', 'Application Support', 'neonpulse')
+      : path.join(os.homedir(), '.neonpulse'));
+const NEONPULSE_COVERS_DIR = path.join(NEONPULSE_DATA_DIR, 'covers');
+const NEONPULSE_OPENFM_ICONS_DIR = path.join(NEONPULSE_DATA_DIR, 'icons', 'openfm');
 
 // Zamień http://localhost:PORT/covers/file.jpg → file:///~/.neonpulse/covers/file.jpg
 // KDE Plasma widget nie pobiera okładek z localhost (loopback blokowany),
@@ -54,10 +54,27 @@ const NEONPULSE_COVERS_DIR = (() => {
 // pobierają je normalnie przez sieć, więc te przepuszczamy bez zmian.
 function toFileArtUrl(url) {
   if (!url) return '';
+
+  // Ikony Open.fm są serwowane przez lokalne API, ale MPRIS/KDE nie pobiera
+  // obrazów z localhost. Wskaż bezpośrednio plik w cache aplikacji.
+  const openfmMatch = url.match(/\/api\/stations\/openfm\/icon\/([^/?#]+)/i);
+  if (openfmMatch) {
+    let filename;
+    try { filename = decodeURIComponent(openfmMatch[1]); } catch { return ''; }
+    if (!/^[a-z0-9-]+\.(?:png|jpe?g)$/i.test(filename)) return '';
+    const iconPath = path.join(NEONPULSE_OPENFM_ICONS_DIR, filename);
+    try {
+      if (fs.statSync(iconPath).isFile() && fs.statSync(iconPath).size > 0) {
+        return pathToFileURL(iconPath).href;
+      }
+    } catch {}
+    return '';
+  }
+
   const m = url.match(/\/covers\/([^/?#]+)$/);
   if (m) return `file://${NEONPULSE_COVERS_DIR}/${m[1]}`;
   if (/^https?:\/\/(localhost|127\.0\.0\.1)([:/]|$)/i.test(url)) return ''; // loopback – odpuść
-  if (url.startsWith('http')) return url; // zewnętrzny URL (favicon stacji itp.) – przepuść
+  if (url.startsWith('http')) return url; // zewnętrzny URL (favicony stacji itp.) – przepuść
   if (!url.startsWith('file://')) return `file://${url}`;
   return url;
 }
@@ -522,6 +539,7 @@ ipcMain.handle('get-platform', () => ({ platform: process.platform, isWayland })
 ipcMain.handle('get-app-icon', () => {
   const path = require('path');
   const fs   = require('fs');
+const { pathToFileURL } = require('url');
   // W środowisku packaged ikony są w resourcesPath/icons/
   // W środowisku dev są w resources/icons/
   const candidates = [

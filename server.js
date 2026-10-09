@@ -34,6 +34,12 @@ const DB_PATH             = path.join(DATA_DIR, 'library.db');
 const COVERS_DIR          = path.join(DATA_DIR, 'covers');
 const STATIONS_PATH       = path.join(DATA_DIR, 'stations.json'); // stacje własne + ukryte ID z manifestu
 const OPENFM_CACHE_PATH   = path.join(DATA_DIR, 'openfm-stations.json'); // cache listy stacji open.fm
+// Ikony stacji open.fm: komplet z GitHuba (openfm-cli/images/png) trafia do
+// DATA_DIR/icons/openfm przy starcie serwera (w tle). Folder jest tylko
+// dopisywany - aplikacja nigdy go nie czyści; brakujące pliki dociągane przy
+// kolejnych startach, marker .complete = pobrano już wszystko.
+const OPENFM_ICONS_DIR    = path.join(DATA_DIR, 'icons', 'openfm');
+const OPENFM_ICONS_SOURCE = 'https://raw.githubusercontent.com/PaffcioStudio/openfm-cli/main/images/png';
 
 fs.mkdirSync(DATA_DIR,   { recursive: true });
 fs.mkdirSync(COVERS_DIR, { recursive: true });
@@ -139,88 +145,147 @@ function songId(filePath) {
 
 // ── Parsowanie metadanych ────────────────────────────────────────
 async function parseFileMeta(filePath) {
-  try {
-    const mm   = require('music-metadata');
-    const stat = fs.statSync(filePath);
-    const meta = await mm.parseFile(filePath, { skipCovers: false, duration: true });
-    const c    = meta.common;
+  let stat = { mtimeMs: 0, size: 0 };
+  try { stat = fs.statSync(filePath); } catch {}
 
+  const base = {
+    title:      path.basename(filePath, path.extname(filePath)),
+    artist:     'Nieznany artysta',
+    album:      'Nieznany album',
+    genre:      'Inne',
+    year:       0,
+    duration:   0,
+    cover:      '',
+    lyrics:     '',
+    mtime:      Math.floor((stat.mtimeMs || 0) / 1000),
+    filesize:   stat.size || 0,
+    replaygain: 0,
+    rating:     0,
+  };
+
+  const buildFromMeta = (meta, allowCover = true) => {
+    const c = meta.common || {};
     let cover = '';
-    const pic = c.picture && c.picture[0];
-    if (pic) {
-      const hash = crypto.createHash('md5').update(pic.data).digest('hex');
-      const ext  = (pic.format || 'image/jpeg').split('/')[1] || 'jpg';
-      const dest = path.join(COVERS_DIR, `${hash}.${ext}`);
-      if (!fs.existsSync(dest)) fs.writeFileSync(dest, pic.data);
-      cover = `http://localhost:3001/covers/${hash}.${ext}`;
+
+    if (allowCover) {
+      try {
+        const pic = c.picture && c.picture[0];
+        if (pic?.data) {
+          const hash = crypto.createHash('md5').update(pic.data).digest('hex');
+          const ext  = (pic.format || 'image/jpeg').split('/')[1] || 'jpg';
+          const dest = path.join(COVERS_DIR, `${hash}.${ext}`);
+          if (!fs.existsSync(dest)) fs.writeFileSync(dest, pic.data);
+          cover = `http://localhost:3001/covers/${hash}.${ext}`;
+        }
+      } catch (e) {
+        // Okładka nie może zablokować dodania utworu do biblioteki.
+        console.warn(`[SCAN] Nie udało się zapisać okładki ${filePath}: ${e.message}`);
+      }
     }
 
-    // ReplayGain
     let replaygain = 0;
-    const rg = meta.common.replaygain_track_gain;
-    if (rg && typeof rg.dB === 'number') replaygain = rg.dB;
+    try {
+      const rg = c.replaygain_track_gain;
+      if (rg && typeof rg.dB === 'number') replaygain = rg.dB;
+    } catch {}
 
-    // Odczyt oceny z tagu POPM (ID3 Popularimeter) – konwersja 0-255 → 0-5 gwiazdek
+    // Odczyt oceny z POPM. Brak POPM oznacza 0, nigdy brak parametru SQL.
     let rating = 0;
-    const popm = meta.native?.['ID3v2.3']?.find?.(t => t.id === 'POPM')
-              || meta.native?.['ID3v2.4']?.find?.(t => t.id === 'POPM');
-    if (popm?.value?.rating) {
-      const v = popm.value.rating;
-      if      (v >= 220) rating = 5;
+    try {
+      const native = meta.native || {};
+      const id32 = Array.isArray(native['ID3v2.3']) ? native['ID3v2.3'] : [];
+      const id324 = Array.isArray(native['ID3v2.4']) ? native['ID3v2.4'] : [];
+      const popm = id32.find(t => t?.id === 'POPM') || id324.find(t => t?.id === 'POPM');
+      const v = Number(popm?.value?.rating || 0);
+      if (v >= 220) rating = 5;
       else if (v >= 168) rating = 4;
       else if (v >= 115) rating = 3;
       else if (v >= 52)  rating = 2;
       else if (v >= 1)   rating = 1;
-    }
+    } catch {}
+
+    let lyrics = '';
+    try {
+      const native = meta.native || {};
+      const id32 = Array.isArray(native['ID3v2.3']) ? native['ID3v2.3'] : [];
+      const id324 = Array.isArray(native['ID3v2.4']) ? native['ID3v2.4'] : [];
+      const uslt = id32.find(t => t?.id === 'USLT') || id324.find(t => t?.id === 'USLT');
+      if (uslt?.value?.text) lyrics = uslt.value.text;
+      else if (Array.isArray(c.lyrics) && c.lyrics.length > 0) {
+        const l = c.lyrics[0];
+        if (typeof l === 'string' && l.trim()) lyrics = l;
+        else if (l && typeof l.text === 'string' && l.text.trim()) lyrics = l.text;
+      } else {
+        const sylt = id32.find(t => t?.id === 'SYLT') || id324.find(t => t?.id === 'SYLT');
+        if (sylt?.value?.text && Array.isArray(sylt.value.text)) {
+          lyrics = sylt.value.text.map(e => e.text || e[0] || '').filter(Boolean).join('\n');
+        }
+      }
+    } catch {}
 
     return {
-      title:      c.title        || path.basename(filePath, path.extname(filePath)),
-      artist:     c.artist       || (c.artists && c.artists[0]) || 'Nieznany artysta',
-      album:      c.album        || 'Nieznany album',
-      genre:      (c.genre && c.genre[0]) || 'Inne',
+      title:      c.title        || base.title,
+      artist:     c.artist       || (c.artists && c.artists[0]) || base.artist,
+      album:      c.album        || base.album,
+      genre:      (c.genre && c.genre[0]) || base.genre,
       year:       c.year         || 0,
-      duration:   meta.format.duration || 0,
+      duration:   Number(meta.format?.duration || 0),
       cover,
-      lyrics:     (() => {
-        // 1. unsynchronisedLyrics (USLT) – node-id3 / music-metadata style
-        const uslt = meta.native?.['ID3v2.3']?.find?.(t => t.id === 'USLT')
-                  || meta.native?.['ID3v2.4']?.find?.(t => t.id === 'USLT');
-        if (uslt?.value?.text) return uslt.value.text;
-        // 2. music-metadata common.lyrics array
-        if (c.lyrics && c.lyrics.length > 0) {
-          const l = c.lyrics[0];
-          if (typeof l === 'string' && l.trim()) return l;
-          if (l && typeof l.text === 'string' && l.text.trim()) return l.text;
-        }
-        // 3. Synchronised lyrics (SYLT) – skonwertuj na plain text
-        const sylt = meta.native?.['ID3v2.3']?.find?.(t => t.id === 'SYLT')
-                  || meta.native?.['ID3v2.4']?.find?.(t => t.id === 'SYLT');
-        if (sylt?.value?.text && Array.isArray(sylt.value.text)) {
-          return sylt.value.text.map(e => e.text || e[0] || '').filter(Boolean).join('\n');
-        }
-        return '';
-      })(),
-      mtime:      Math.floor(stat.mtimeMs / 1000),
-      filesize:   stat.size,
+      lyrics,
+      mtime:      base.mtime,
+      filesize:   base.filesize,
       replaygain,
+      rating,
     };
-  } catch {
-    let stat = { mtimeMs: 0, size: 0 };
-    try { stat = fs.statSync(filePath); } catch {}
-    return {
-      title:      path.basename(filePath, path.extname(filePath)),
-      artist:     'Nieznany artysta',
-      album:      'Nieznany album',
-      genre:      'Inne',
-      year:       0,
-      duration:   0,
-      cover:      '',
-      lyrics:     '',
-      mtime:      Math.floor((stat.mtimeMs || 0) / 1000),
-      filesize:   stat.size || 0,
-      replaygain: 0,
-    };
+  };
+
+  try {
+    const mm = require('music-metadata');
+
+    // Pierwsza próba z okładkami. Nie zakładamy jednak, że uszkodzona/egzotyczna
+    // sekcja artworku może unieruchomić cały utwór.
+    try {
+      const meta = await mm.parseFile(filePath, { skipCovers: false, duration: true });
+      return buildFromMeta(meta, true);
+    } catch (firstError) {
+      console.warn(`[SCAN] music-metadata (pełne tagi) odrzucił ${filePath}: ${firstError.message}`);
+
+      // Druga próba bez artworku – najważniejsze są tagi i czas trwania.
+      try {
+        const meta = await mm.parseFile(filePath, { skipCovers: true, duration: true });
+        return buildFromMeta(meta, false);
+      } catch (secondError) {
+        console.warn(`[SCAN] music-metadata (bez okładki) odrzucił ${filePath}: ${secondError.message}`);
+      }
+    }
+  } catch (e) {
+    console.warn(`[SCAN] Nie można załadować music-metadata dla ${filePath}: ${e.message}`);
   }
+
+  // Awaryjny parser MP3. Nawet gdy music-metadata nie radzi sobie z konkretnym
+  // plikiem/tagiem, utwór nadal trafia do biblioteki i dostaje podstawowe ID3.
+  if (path.extname(filePath).toLowerCase() === '.mp3') {
+    try {
+      const id3 = require('node-id3');
+      const tags = id3.read(filePath) || {};
+      const yearRaw = tags.year || tags.date || tags.originalReleaseYear || 0;
+      const year = parseInt(String(yearRaw).slice(0, 4), 10) || 0;
+      return {
+        ...base,
+        title:  tags.title || base.title,
+        artist: tags.artist || tags.performerInfo || base.artist,
+        album:  tags.album || base.album,
+        genre:  tags.genre || base.genre,
+        year,
+        rating: 0,
+      };
+    } catch (e) {
+      console.warn(`[SCAN] Awaryjny ID3 też nie odczytał ${filePath}: ${e.message}`);
+    }
+  }
+
+  // Ostatnia deska ratunku: rekord ma komplet kluczy oczekiwanych przez SQL.
+  return base;
 }
 
 // ── SSE ─────────────────────────────────────────────────────────
@@ -235,129 +300,334 @@ function sseEmit(event, data) {
 
 // ── Skanowanie ──────────────────────────────────────────────────
 let scanRunning = false;
+let scanPending = false;
+let scanPendingPaths = null;
 
-function collectAudio(dir, results) {
-  let entries;
-  try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
-  catch { return; }
-  for (const e of entries) {
-    const full = path.join(dir, e.name);
-    if (e.isDirectory()) collectAudio(full, results);
-    else if (e.isFile() && isAudio(e.name)) results.push(full);
-  }
+// Watcher nie uruchamia już pełnego skanu przy każdym zdarzeniu filesystemu.
+// Zdarzenie add/change/unlink trafia do małej kolejki i obsługujemy tylko ten plik.
+// Pełny scan jest zarezerwowany dla startu, ręcznego Rescan oraz rzadkiego
+// reconcile jako zabezpieczenia na filesystemach, które potrafią zgubić event.
+const queuedFileEvents = new Map();
+let queuedFileTimer = null;
+let fileQueueRunning = false;
+
+const RESCAN_FALLBACK_INTERVAL_MS = 60_000;
+const FILE_EVENT_DEBOUNCE_MS = 900;
+
+function normalizeFsPath(p) {
+  try { return fs.realpathSync.native(p); } catch { return path.resolve(p); }
 }
 
-async function scanPaths(paths) {
-  if (scanRunning) return;
-  scanRunning = true;
+function isInsideWatchedPath(filePath, watchedPaths) {
+  const fp = normalizeFsPath(filePath);
+  return watchedPaths.some(root => {
+    const rp = normalizeFsPath(root);
+    return fp === rp || fp.startsWith(rp + path.sep);
+  });
+}
 
-  const allFiles = [];
-  for (const dir of paths) collectAudio(dir, allFiles);
-
-  sseEmit('status', { isScanning: true, count: 0, total: allFiles.length, scanned: 0 });
-
-  let scanned = 0;
-  const batchSize = 10;
-
-  const insertStmt = db.prepare(`
-    INSERT OR IGNORE INTO songs
-      (id, path, title, artist, album, genre, year, duration, cover, lyrics, mtime, filesize, replaygain, rating)
-    VALUES
-      (@id,@path,@title,@artist,@album,@genre,@year,@duration,@cover,@lyrics,@mtime,@filesize,@replaygain,@rating)
-  `);
-
-  const updateStmt = db.prepare(`
-    UPDATE songs SET
-      title=@title, artist=@artist, album=@album, genre=@genre, year=@year,
-      duration=@duration, cover=@cover, lyrics=@lyrics,
-      mtime=@mtime, filesize=@filesize, replaygain=@replaygain,
-      rating=CASE WHEN @rating > 0 THEN @rating ELSE rating END
-    WHERE id=@id
-  `);
-
-  for (let i = 0; i < allFiles.length; i += batchSize) {
-    const batch = allFiles.slice(i, i + batchSize);
-    await Promise.all(batch.map(async fp => {
-      const id = songId(fp);
-      const existing = db.prepare('SELECT id, mtime FROM songs WHERE id = ?').get(id);
-      try {
-        const stat = fs.statSync(fp);
-        const mtime = Math.floor(stat.mtimeMs / 1000);
-        if (!existing) {
-          // Nowy plik – dodaj
-          const meta = await parseFileMeta(fp);
-          insertStmt.run({ id, path: fp, ...meta });
-          sseEmit('song_added', { path: fp });
-        } else if (existing.mtime !== mtime) {
-          // Plik zmieniony – odśwież metadane
-          const meta = await parseFileMeta(fp);
-          updateStmt.run({ id, ...meta });
-          sseEmit('tags_updated', { id, song: db.prepare('SELECT * FROM songs WHERE id=?').get(id) });
-        }
-        // Plik niezmieniony – pomiń
-      } catch {}
-      scanned++;
-    }));
-    sseEmit('status', { isScanning: true, count: scanned, total: allFiles.length, scanned });
+function collectAudio(dir, results, visited = new Set()) {
+  // Używamy stat(), a nie tylko Dirent.isDirectory()/isFile(), żeby
+  // biblioteki zawierające dowiązane katalogi/pliki również były skanowane.
+  // realpath + visited chroni przed pętlami typu symlink -> rodzic.
+  let realDir;
+  try {
+    realDir = fs.realpathSync.native(dir);
+    if (visited.has(realDir)) return;
+    visited.add(realDir);
+  } catch (e) {
+    console.warn(`[SCAN] Nie można otworzyć katalogu: ${dir}: ${e.message}`);
+    return;
   }
 
-  // Usuń nieistniejące pliki
-  const allInDb = db.prepare('SELECT id, path FROM songs').all();
-  for (const row of allInDb) {
-    if (!fs.existsSync(row.path)) {
-      db.prepare('DELETE FROM songs WHERE id = ?').run(row.id);
-      favSet.delete(row.id);
-      sseEmit('song_removed', { id: row.id });
+  let entries;
+  try { entries = fs.readdirSync(realDir, { withFileTypes: true }); }
+  catch (e) {
+    console.warn(`[SCAN] Nie można odczytać katalogu: ${realDir}: ${e.message}`);
+    return;
+  }
+
+  for (const e of entries) {
+    const full = path.join(realDir, e.name);
+    try {
+      const st = fs.statSync(full); // follow symlinks
+      if (st.isDirectory()) collectAudio(full, results, visited);
+      else if (st.isFile() && isAudio(e.name)) results.push(full);
+    } catch (err) {
+      console.warn(`[SCAN] Pomijam ${full}: ${err.message}`);
     }
   }
-
-  reloadFavSet();
-  const count = db.prepare('SELECT COUNT(*) as n FROM songs').get().n;
-  sseEmit('scan_done', { count });
-  sseEmit('status', { isScanning: false, count, scanned: count, total: allFiles.length });
-  scanRunning = false;
 }
 
-// ── Chokidar ────────────────────────────────────────────────────
+function emitCurrentSong(id, event = 'tags_updated') {
+  const song = db.prepare('SELECT * FROM songs WHERE id=?').get(id);
+  if (song) sseEmit(event, { id, song: dbRow(song) });
+}
+
+// Statements są przygotowane raz. Skanowanie setek plików nie wykonuje już
+// prepare() dla każdego utworu.
+const scanInsertStmt = db.prepare(`
+  INSERT OR IGNORE INTO songs
+    (id, path, title, artist, album, genre, year, duration, cover, lyrics, mtime, filesize, replaygain, rating)
+  VALUES
+    (@id,@path,@title,@artist,@album,@genre,@year,@duration,@cover,@lyrics,@mtime,@filesize,@replaygain,@rating)
+`);
+
+const scanUpdateStmt = db.prepare(`
+  UPDATE songs SET
+    title=@title, artist=@artist, album=@album, genre=@genre, year=@year,
+    duration=@duration, cover=CASE WHEN @cover != '' THEN @cover ELSE cover END,
+    lyrics=CASE WHEN @lyrics != '' THEN @lyrics ELSE lyrics END,
+    mtime=@mtime, filesize=@filesize, replaygain=@replaygain,
+    rating=CASE WHEN @rating > 0 THEN @rating ELSE rating END
+  WHERE id=@id
+`);
+
+async function upsertAudioFile(filePath, reason = 'plik') {
+  const fp = normalizeFsPath(filePath);
+  if (!isAudio(fp)) return { changed: false, exists: false };
+
+  const watchedPaths = getWatchedPaths();
+  if (!isInsideWatchedPath(fp, watchedPaths)) return { changed: false, exists: false };
+
+  let stat;
+  try {
+    stat = fs.statSync(fp);
+    if (!stat.isFile()) return { changed: false, exists: false };
+  } catch (e) {
+    // Plik mógł zniknąć pomiędzy eventem a obsługą kolejki.
+    return { changed: false, exists: false, missing: true };
+  }
+
+  const id = songId(fp);
+  const mtime = Math.floor(stat.mtimeMs / 1000);
+  const filesize = stat.size;
+  // Szukamy po id OR po ścieżce, żeby po migracji ze starej wersji ze ścieżkami
+  // symlinków nie utworzyć drugiego wpisu dla tego samego fizycznego pliku.
+  const existing = db.prepare('SELECT id, path, mtime, filesize FROM songs WHERE id = ? OR path = ? LIMIT 1').get(id, fp);
+
+  // Nic się nie zmieniło – nie parsujemy ponownie ciężkich metadanych.
+  if (existing && existing.mtime === mtime && existing.filesize === filesize) {
+    return { changed: false, exists: true };
+  }
+
+  try {
+    const meta = await parseFileMeta(fp);
+    const row = {
+      id: existing?.id || id,
+      path: fp,
+      ...meta,
+      rating: Number.isFinite(Number(meta.rating)) ? Number(meta.rating) : 0,
+    };
+    if (!existing) {
+      scanInsertStmt.run(row);
+      console.log(`[SCAN] Dodano do biblioteki (${reason}): ${fp}`);
+      sseEmit('song_added', { path: fp });
+      return { changed: true, exists: true, added: true };
+    }
+
+    scanUpdateStmt.run(row);
+    console.log(`[SCAN] Zaktualizowano (${reason}): ${fp}`);
+    emitCurrentSong(id);
+    return { changed: true, exists: true, updated: true };
+  } catch (e) {
+    // Plik może być właśnie kopiowany albo chwilowo zablokowany. Watcher może
+    // spróbować go ponownie, a fallback reconcile zrobi to również później.
+    console.warn(`[SCAN] Nie udało się przetworzyć ${fp}: ${e.message}`);
+    return { changed: false, exists: !!existing, error: e };
+  }
+}
+
+function removeAudioFile(filePath) {
+  const candidates = new Set([path.resolve(filePath), normalizeFsPath(filePath)]);
+  const rows = db.prepare('SELECT id, path FROM songs').all();
+  const removed = [];
+
+  for (const row of rows) {
+    const stored = normalizeFsPath(row.path);
+    if (!candidates.has(stored) && !candidates.has(path.resolve(row.path))) continue;
+    db.prepare('DELETE FROM songs WHERE id = ?').run(row.id);
+    favSet.delete(row.id);
+    removed.push(row.id);
+    sseEmit('song_removed', { id: row.id });
+    console.log(`[SCAN] Usunięto z biblioteki: ${row.path}`);
+  }
+
+  if (removed.length) reloadFavSet();
+  return removed.length > 0;
+}
+
+async function processQueuedFileEvents() {
+  if (fileQueueRunning || scanRunning || queuedFileEvents.size === 0) return;
+  fileQueueRunning = true;
+
+  try {
+    while (!scanRunning && queuedFileEvents.size) {
+      const entries = Array.from(queuedFileEvents.entries());
+      queuedFileEvents.clear();
+
+      let changed = false;
+      for (const [fp, eventName] of entries) {
+        if (eventName === 'usunięcie pliku') {
+          changed = removeAudioFile(fp) || changed;
+          continue;
+        }
+
+        const result = await upsertAudioFile(fp, eventName);
+        changed = result.changed || changed;
+      }
+
+      if (changed) sseEmit('library_changed', {});
+    }
+  } finally {
+    fileQueueRunning = false;
+    if (!scanRunning && queuedFileEvents.size) scheduleQueuedFileProcessing();
+  }
+}
+
+function scheduleQueuedFileProcessing() {
+  if (queuedFileTimer) clearTimeout(queuedFileTimer);
+  queuedFileTimer = setTimeout(() => {
+    queuedFileTimer = null;
+    processQueuedFileEvents().catch(e => console.error('[SCAN]', e));
+  }, FILE_EVENT_DEBOUNCE_MS);
+}
+
+function queueFileEvent(filePath, eventName) {
+  const fp = path.resolve(filePath);
+  if (!isAudio(fp)) return;
+
+  // Przy szybkim zapisie jednego pliku interesuje nas końcowy stan. add ma
+  // pierwszeństwo przed change, a unlink zawsze ma pierwszeństwo przed resztą.
+  const previous = queuedFileEvents.get(fp);
+  if (eventName === 'usunięcie pliku' || !previous || previous !== 'nowy plik') {
+    queuedFileEvents.set(fp, eventName);
+  }
+  scheduleQueuedFileProcessing();
+}
+
+async function scanPaths(paths, { silent = false } = {}) {
+  if (scanRunning) {
+    scanPending = true;
+    scanPendingPaths = paths.slice();
+    return;
+  }
+
+  scanRunning = true;
+  scanPending = false;
+  scanPendingPaths = null;
+
+  try {
+    // Ręczny/startowy scan jest pełnym skanem i jedynym miejscem, które świadomie
+    // przechodzi po całej bibliotece. Watcher nie odpala go dla pojedynczych eventów.
+    const watchedPaths = paths.map(normalizeFsPath).filter(p => {
+      try { return fs.statSync(p).isDirectory(); } catch { return false; }
+    });
+
+    const allFiles = [];
+    for (const dir of watchedPaths) collectAudio(dir, allFiles);
+    allFiles.sort();
+
+    if (!silent) sseEmit('status', { isScanning: true, count: 0, total: allFiles.length, scanned: 0 });
+
+    let scanned = 0;
+    let changed = false;
+    const batchSize = 10;
+
+    for (let i = 0; i < allFiles.length; i += batchSize) {
+      const batch = allFiles.slice(i, i + batchSize);
+      const results = await Promise.all(batch.map(fp => upsertAudioFile(fp, 'pełny skan')));
+      if (results.some(r => r.changed)) changed = true;
+      scanned += batch.length;
+      if (!silent) sseEmit('status', { isScanning: true, count: scanned, total: allFiles.length, scanned });
+    }
+
+    // Usuwamy wyłącznie wpisy należące do aktualnie obserwowanych katalogów.
+    const allInDb = db.prepare('SELECT id, path FROM songs').all();
+    for (const row of allInDb) {
+      if (isInsideWatchedPath(row.path, watchedPaths) && !fs.existsSync(row.path)) {
+        db.prepare('DELETE FROM songs WHERE id = ?').run(row.id);
+        favSet.delete(row.id);
+        sseEmit('song_removed', { id: row.id });
+        console.log(`[SCAN] Usunięto z biblioteki: ${row.path}`);
+        changed = true;
+      }
+    }
+
+    reloadFavSet();
+    const count = db.prepare('SELECT COUNT(*) as n FROM songs').get().n;
+    if (!silent) {
+      sseEmit('scan_done', { count, changed });
+      sseEmit('status', { isScanning: false, count, scanned, total: allFiles.length });
+    }
+    if (changed) sseEmit('library_changed', {});
+  } finally {
+    scanRunning = false;
+
+    // Jeżeli podczas pełnego skanu nadszedł kolejny Rescan, wykonujemy go po
+    // zakończeniu bieżącego, bez równoległego mielania bazy.
+    if (scanPending) {
+      const nextPaths = scanPendingPaths || getWatchedPaths();
+      scanPending = false;
+      scanPendingPaths = null;
+      setImmediate(() => scanPaths(nextPaths).catch(e => console.error('[SCAN]', e)));
+    } else if (queuedFileEvents.size) {
+      scheduleQueuedFileProcessing();
+    }
+  }
+}
+
+// ── Chokidar + rzadki fallback reconcile ────────────────────────
 let watcher = null;
+let reconcileTimer = null;
+
+function scheduleLibraryScan(reason, options = {}) {
+  const paths = getWatchedPaths();
+  if (!paths.length) return;
+  if (reason) console.log(`[SCANNER] ${reason} – synchronizuję bibliotekę`);
+  scanPaths(paths, options).catch(e => console.error('[SCAN]', e));
+}
 
 function startWatcher(paths) {
   if (watcher) { try { watcher.close(); } catch {} watcher = null; }
+  if (reconcileTimer) { clearInterval(reconcileTimer); reconcileTimer = null; }
+  if (queuedFileTimer) { clearTimeout(queuedFileTimer); queuedFileTimer = null; }
+  queuedFileEvents.clear();
   if (!paths.length) return;
+
   try {
     const chokidar = require('chokidar');
     watcher = chokidar.watch(paths, {
-      ignored: /node_modules/,
+      ignored: /(^|[\\/])node_modules([\\/]|$)/,
       persistent: true,
+      followSymlinks: true,
       ignoreInitial: true,
-      awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 200 },
+      usePolling: true,
+      interval: 1000,
+      binaryInterval: 1000,
+      awaitWriteFinish: { stabilityThreshold: 1500, pollInterval: 250 },
     });
-    watcher.on('add', async fp => {
+
+    const onAudioChange = (fp, eventName) => {
       if (!isAudio(fp)) return;
-      const id = songId(fp);
-      const exists = db.prepare('SELECT id FROM songs WHERE id = ?').get(id);
-      if (!exists) {
-        const meta = await parseFileMeta(fp);
-        try {
-          db.prepare(`
-            INSERT OR IGNORE INTO songs
-              (id,path,title,artist,album,genre,year,duration,cover,lyrics,mtime,filesize,replaygain)
-            VALUES
-              (@id,@path,@title,@artist,@album,@genre,@year,@duration,@cover,@lyrics,@mtime,@filesize,@replaygain)
-          `).run({ id, path: fp, ...meta });
-          sseEmit('song_added', { path: fp });
-          sseEmit('library_changed', {});
-        } catch {}
-      }
-    });
-    watcher.on('unlink', fp => {
-      const id = songId(fp);
-      db.prepare('DELETE FROM songs WHERE id = ?').run(id);
-      favSet.delete(id);
-      sseEmit('song_removed', { id });
-      sseEmit('library_changed', {});
-    });
-  } catch (e) { console.warn('[WATCHER]', e.message); }
+      console.log(`[SCANNER] ${eventName}: ${fp}`);
+      queueFileEvent(fp, eventName);
+    };
+
+    watcher.on('add', fp => onAudioChange(fp, 'nowy plik'));
+    watcher.on('change', fp => onAudioChange(fp, 'zmiana pliku'));
+    watcher.on('unlink', fp => onAudioChange(fp, 'usunięcie pliku'));
+    watcher.on('error', e => console.warn('[WATCHER]', e.message));
+
+    // Fallback zostaje celowo rzadki. Normalny przypadek obsługuje polling
+    // chokidara (ok. 1 s), więc nie ma potrzeby pełnego skanu co 5 sekund.
+    reconcileTimer = setInterval(() => {
+      if (scanRunning || fileQueueRunning || queuedFileEvents.size) return;
+      scheduleLibraryScan('okresowy reconcile', { silent: true });
+    }, RESCAN_FALLBACK_INTERVAL_MS);
+  } catch (e) {
+    console.warn('[WATCHER]', e.message);
+  }
 }
 
 // ── Ścieżki muzyczne ────────────────────────────────────────────
@@ -1216,6 +1486,16 @@ function loadManifestStations() {
         type: s.type === 'lanbeats' ? 'lanbeats' : 'icecast',
         favicon: s.favicon ? String(s.favicon) : '',
         source: 'manifest',
+        // Alternatywne oddziały/mirrory tej samej stacji (np. rozszczepienia
+        // regionalne sieci radiowych - ten sam program z lokalnymi wstawkami,
+        // czasem inny, stabilniejszy CDN). Każdy wariant: { id, label, url }.
+        // Wybór użytkownika trzymany osobno w stations.json (manifestVariantSelections),
+        // manifest sam jest tylko listą możliwości, nieedytowaną przez appkę.
+        variants: Array.isArray(s.variants)
+          ? s.variants
+              .filter(v => v && v.id && v.label && v.url)
+              .map(v => ({ id: String(v.id), label: String(v.label), url: String(v.url) }))
+          : [],
       }));
   } catch {
     return [];
@@ -1235,9 +1515,14 @@ function loadUserStations() {
       // "źródłowy" edytowalny przez autora, nie miejsce na dane sesyjne.
       manifestFaviconCache: (data.manifestFaviconCache && typeof data.manifestFaviconCache === 'object')
         ? data.manifestFaviconCache : {},
+      // Wybrany wariant (np. oddział regionalny) dla stacji z manifestu, które
+      // mają pole "variants". Klucz = id stacji, wartość = id wariantu.
+      // Brak wpisu = użyj domyślnego url ze stacji (pierwszy/główny oddział).
+      manifestVariantSelections: (data.manifestVariantSelections && typeof data.manifestVariantSelections === 'object')
+        ? data.manifestVariantSelections : {},
     };
   } catch {
-    return { stations: [], hiddenManifestIds: [], manifestFaviconCache: {} };
+    return { stations: [], hiddenManifestIds: [], manifestFaviconCache: {}, manifestVariantSelections: {} };
   }
 }
 
@@ -1247,20 +1532,189 @@ function saveUserStations(data) {
 }
 
 // GET /api/stations – połączona lista: manifest (bez ukrytych) + własne
+// Zastosuj wybrany wariant (jeśli jest) do stacji z manifestu: podmienia url
+// na ten z wybranego wariantu i dołącza activeVariantId, żeby frontend mógł
+// podświetlić właściwą pozycję w selektorze miasta/oddziału.
+function applyVariantSelection(station, manifestVariantSelections) {
+  if (!station.variants || station.variants.length === 0) return station;
+  const selectedId = manifestVariantSelections[station.id];
+  const selected = selectedId ? station.variants.find(v => v.id === selectedId) : null;
+  return {
+    ...station,
+    url: selected ? selected.url : station.url,
+    activeVariantId: selected ? selected.id : null, // null = domyślny/główny oddział
+  };
+}
+
+// ─── Ikony stacji open.fm ────────────────────────────────────────────────────
+// Postęp pobierania wystawiamy przez /api/stations/openfm/icons/status dla
+// toastu we froncie; same pliki serwuje /api/stations/openfm/icon/<plik>.
+
+function openfmIconsListPath() {
+  // W dev: __dirname/resources/stations/openfm-icons.json
+  // W paczce: process.resourcesPath/stations/openfm-icons.json (extraResources)
+  const packaged = process.resourcesPath
+    ? path.join(process.resourcesPath, 'stations', 'openfm-icons.json')
+    : null;
+  if (packaged && fs.existsSync(packaged)) return packaged;
+  return path.join(__dirname, 'resources', 'stations', 'openfm-icons.json');
+}
+
+const openfmIconState = { running: false, done: 0, total: 0, failed: [], complete: false };
+
+function openfmIconManifest() {
+  try {
+    const list = JSON.parse(fs.readFileSync(openfmIconsListPath(), 'utf8'));
+    if (Array.isArray(list) && list.length) return list.map(String);
+  } catch {}
+  return null;
+}
+
+function slugIconCandidates(slug) {
+  const safe = String(slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (!safe) return [];
+  return [`${safe}.jpg`, `${safe}.jpeg`, `${safe}.png`];
+}
+
+function findOpenfmIconFile(slug) {
+  for (const cand of slugIconCandidates(slug)) {
+    try {
+      const p = path.join(OPENFM_ICONS_DIR, cand);
+      if (fs.statSync(p).size > 0) return cand;
+    } catch {}
+  }
+  return null;
+}
+
+function openfmIconUrl(file) {
+  return `http://127.0.0.1:${PORT}/api/stations/openfm/icon/${encodeURIComponent(file)}`;
+}
+
+async function downloadOpenfmIcons() {
+  const files = openfmIconManifest();
+  if (!files || !files.length) {
+    console.warn('[openfm-icons] brak listy plików ikon (openfm-icons.json) - pomijam');
+    return;
+  }
+  fs.mkdirSync(OPENFM_ICONS_DIR, { recursive: true });
+
+  // Komplet pobrany wcześniej (marker + wszystkie pliki obecne) -> nic nie robimy
+  try {
+    const marker = fs.readFileSync(path.join(OPENFM_ICONS_DIR, '.complete'), 'utf8').trim();
+    const allThere = files.every(f => {
+      try { return fs.statSync(path.join(OPENFM_ICONS_DIR, f)).size > 0; } catch { return false; }
+    });
+    if (marker === String(files.length) && allThere) {
+      Object.assign(openfmIconState, { running: false, done: files.length, total: files.length, failed: [], complete: true });
+      console.log('[openfm-icons] komplet ikon już w cache - pomijam pobieranie');
+      return;
+    }
+  } catch {}
+
+  const missing = files.filter(f => {
+    try { return fs.statSync(path.join(OPENFM_ICONS_DIR, f)).size <= 0; } catch { return true; }
+  });
+  Object.assign(openfmIconState, { running: true, total: files.length, done: files.length - missing.length, failed: [], complete: false });
+
+  if (missing.length === 0) {
+    fs.writeFileSync(path.join(OPENFM_ICONS_DIR, '.complete'), String(files.length));
+    Object.assign(openfmIconState, { running: false, complete: true });
+    return;
+  }
+
+  console.log(`[openfm-icons] pobieranie ikon: brakuje ${missing.length}/${files.length}`);
+  const https = require('https');
+  const downloadOne = (file) => new Promise((resolve) => {
+    const url  = `${OPENFM_ICONS_SOURCE}/${encodeURIComponent(file)}`;
+    const dest = path.join(OPENFM_ICONS_DIR, file);
+    const tmp  = `${dest}.part`;
+    const cleanup = () => { try { fs.unlinkSync(tmp); } catch {} };
+    const req = https.get(url, { timeout: 20000, headers: { 'User-Agent': 'NeonPulse-Player/3.6' } }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); cleanup(); return resolve(false); }
+      const out = fs.createWriteStream(tmp);
+      res.pipe(out);
+      out.on('finish', () => { try { fs.renameSync(tmp, dest); resolve(true); } catch { cleanup(); resolve(false); } });
+      out.on('error', () => { cleanup(); resolve(false); });
+    });
+    req.on('timeout', () => { req.destroy(); cleanup(); resolve(false); });
+    req.on('error', () => { cleanup(); resolve(false); });
+  });
+
+  // Mały pool równoległości - 151 plików po kolei trwałoby za długo
+  let idx = 0;
+  const worker = async () => {
+    while (idx < missing.length) {
+      const file = missing[idx++];
+      const ok = await downloadOne(file);
+      if (ok) openfmIconState.done += 1; else openfmIconState.failed.push(file);
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+
+  openfmIconState.running = false;
+  if (openfmIconState.failed.length === 0) {
+    fs.writeFileSync(path.join(OPENFM_ICONS_DIR, '.complete'), String(files.length));
+    openfmIconState.complete = true;
+    console.log(`[openfm-icons] komplet (${files.length}) w cache`);
+  } else {
+    console.warn(`[openfm-icons] nieudane pobrania: ${openfmIconState.failed.join(', ')} - retry przy następnym starcie serwera`);
+  }
+}
+
 app.get('/api/stations', (_req, res) => {
   const manifestStations = loadManifestStations();
-  const { stations: userStations, hiddenManifestIds, manifestFaviconCache } = loadUserStations();
+  const { stations: userStations, hiddenManifestIds, manifestFaviconCache, manifestVariantSelections } = loadUserStations();
+
+  // Wstrzyknij lokalną ikonę z cache open.fm, jeśli stacja jeszcze jej nie ma:
+  // openfm po slugu, manifest/pozostałe po id, na końcu po spłaszczonym name.
+  // Dla stacji open.fm bez pliku lokalnego - logoUrl z cache scrape'a open.fm
+  // (część stacji nie ma ikony w openfm-cli, np. trance).
+  const openfmLogos = openfmLogosBySlug();
+  const withIcon = (s) => {
+    if (s.favicon) return s;
+    const candidates = [];
+    if (s.type === 'openfm' && s.slug) candidates.push(s.slug);
+    if (s.id) candidates.push(s.id);
+    if (s.name) candidates.push(String(s.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''));
+    for (const cand of candidates) {
+      const file = findOpenfmIconFile(cand);
+      if (file) return { ...s, favicon: openfmIconUrl(file) };
+    }
+    if (s.type === 'openfm' && s.slug && openfmLogos[s.slug]) {
+      return { ...s, favicon: openfmLogos[s.slug] };
+    }
+    return s;
+  };
 
   const visibleManifest = manifestStations
     .filter(s => !hiddenManifestIds.includes(s.id))
-    .map(s => ({ ...s, favicon: s.favicon || manifestFaviconCache[s.id] || '', isHidden: false }));
+    .map(s => withIcon(applyVariantSelection({ ...s, favicon: s.favicon || manifestFaviconCache[s.id] || '', isHidden: false }, manifestVariantSelections)));
 
-  const ownStations = userStations.map(s => ({ ...s, source: 'user', isHidden: false }));
+  const ownStations = userStations.map(s => withIcon({ ...s, source: 'user', isHidden: false }));
 
   res.json({
     stations: [...visibleManifest, ...ownStations],
     hiddenManifestIds,
   });
+});
+
+// GET /api/stations/openfm/icons/status – postęp pobierania ikon (polling toastu)
+app.get('/api/stations/openfm/icons/status', (_req, res) => {
+  res.json({ ...openfmIconState });
+});
+
+// GET /api/stations/openfm/icon/<plik> – serwuje ikonę z cache (nowe pliki .png; obsługa starszych .jpg/.jpeg pozostaje)
+app.get('/api/stations/openfm/icon/:file', (req, res) => {
+  const file = String(req.params.file || '');
+  if (!/^[a-z0-9-]+(\.jpg|\.jpeg|\.png)$/i.test(file)) return res.status(400).end();
+  const p = path.join(OPENFM_ICONS_DIR, file);
+  try {
+    if (fs.statSync(p).size > 0) {
+      res.set('Cache-Control', 'public, max-age=604800');
+      return res.sendFile(p);
+    }
+  } catch {}
+  res.status(404).end();
 });
 
 // POST /api/stations/auto-fetch-favicons – jednorazowo dociągnij ikonki dla
@@ -1307,10 +1761,10 @@ app.post('/api/stations/auto-fetch-favicons', async (_req, res) => {
 // GET /api/stations/hidden – pełne dane ukrytych stacji manifestu (do listy "Ukryte" w UI)
 app.get('/api/stations/hidden', (_req, res) => {
   const manifestStations = loadManifestStations();
-  const { hiddenManifestIds, manifestFaviconCache } = loadUserStations();
+  const { hiddenManifestIds, manifestFaviconCache, manifestVariantSelections } = loadUserStations();
   const hidden = manifestStations
     .filter(s => hiddenManifestIds.includes(s.id))
-    .map(s => ({ ...s, favicon: s.favicon || manifestFaviconCache[s.id] || '', isHidden: true }));
+    .map(s => applyVariantSelection({ ...s, favicon: s.favicon || manifestFaviconCache[s.id] || '', isHidden: true }, manifestVariantSelections));
   res.json({ stations: hidden });
 });
 
@@ -1379,6 +1833,26 @@ app.post('/api/stations/:id/hide', (req, res) => {
 app.post('/api/stations/:id/unhide', (req, res) => {
   const data = loadUserStations();
   data.hiddenManifestIds = data.hiddenManifestIds.filter(id => id !== req.params.id);
+  saveUserStations(data);
+  res.json({ ok: true });
+});
+
+// POST /api/stations/:id/variant – wybierz oddział/wariant stacji z manifestu
+// (np. "Gdańsk" zamiast domyślnego "Poznań" dla Radia Złote Przeboje).
+// { variantId: "..." } albo { variantId: null } żeby wrócić do domyślnego.
+app.post('/api/stations/:id/variant', (req, res) => {
+  const { variantId } = req.body || {};
+  const manifestStations = loadManifestStations();
+  const station = manifestStations.find(s => s.id === req.params.id);
+  if (!station) return res.status(404).json({ error: 'Nie znaleziono stacji' });
+
+  if (variantId && !station.variants.some(v => v.id === variantId)) {
+    return res.status(400).json({ error: `Stacja nie ma wariantu "${variantId}"` });
+  }
+
+  const data = loadUserStations();
+  if (variantId) data.manifestVariantSelections[req.params.id] = variantId;
+  else delete data.manifestVariantSelections[req.params.id];
   saveUserStations(data);
   res.json({ ok: true });
 });
@@ -1505,6 +1979,9 @@ app.get('/api/stations/lookup-favicon', async (req, res) => {
 // skrypcie bash (openfm-play.sh), tylko przeniesiona do backendu.
 const OPENFM_UA = 'Mozilla/5.0 (X11; Linux x86_64; rv:153.0) Gecko/20100101 Firefox/153.0';
 const OPENFM_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// Jednorazowa próba "samonaprawy" cache o logoUrl na cały czas życia procesu -
+// bez tego offline ogniwo otwarcia przeglądarki wisiałoby 8s na nieudanym fetchu.
+let openfmLogoHealTried = false;
 
 function loadOpenfmCache() {
   try {
@@ -1520,6 +1997,34 @@ function loadOpenfmCache() {
 function saveOpenfmCache(stations) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(OPENFM_CACHE_PATH, JSON.stringify({ fetchedAt: Date.now(), stations }, null, 2));
+}
+
+// slug → logoUrl prosto z cache, BEZ limitu TTL. Ikona nie "przedawnia się"
+// jak lista stacji, a inject ikon ma działać też zanim przeglądarka open.fm
+// odświeży cache świeżym scrape'em.
+function openfmLogosBySlug() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(OPENFM_CACHE_PATH, 'utf8'));
+    if (!Array.isArray(raw.stations)) return {};
+    return Object.fromEntries(
+      raw.stations.filter(s => s?.slug && s?.logoUrl).map(s => [s.slug, s.logoUrl])
+    );
+  } catch {
+    return {};
+  }
+}
+
+// Uzupełnij każdą stację katalogu o favicon: najpierw lokalny plik z cache
+// openfm-cli (działa offline), a gdy go nie ma - logoUrl prosto z CDN open.fm.
+function decorateOpenfmIcons(stations) {
+  const logos = openfmLogosBySlug();
+  return stations.map(s => {
+    if (s.favicon) return s;
+    const local = findOpenfmIconFile(s.slug);
+    if (local) return { ...s, favicon: openfmIconUrl(local) };
+    const remote = s.logoUrl || logos[s.slug];
+    return remote ? { ...s, favicon: remote } : s;
+  });
 }
 
 function httpsGetText(url, headers = {}) {
@@ -1539,6 +2044,10 @@ async function fetchOpenfmStations() {
   const html = await httpsGetText('https://open.fm/stacje-muzyczne/trance', { 'User-Agent': OPENFM_UA });
   // Ten sam wzorzec co w openfm-play.sh: "id":N,"name":"X","slug":"Y"
   const re = /"id":(\d+),"name":"((?:[^"\\]|\\.)*)","slug":"([^"]*)"/g;
+  // Logo stacji ("logoUrl" na CDN open.fm) siedzi w tym samym obiekcie JSON co
+  // slug. Część stacji nie ma swojego pliku w cache z openfm-cli (np. trance,
+  // 500-hits), więc logoUrl to jedyne źródło ikony dla nich.
+  const logoRe = /"slug":"([^"]+)"[^{}]*?"logoUrl":"([^"]+)"/g;
   const seen = new Map();
   let m;
   while ((m = re.exec(html)) !== null) {
@@ -1548,6 +2057,10 @@ async function fetchOpenfmStations() {
     try { name = JSON.parse(`"${rawName}"`); } catch {}
     seen.set(slug, { slug, id, name });
   }
+  while ((m = logoRe.exec(html)) !== null) {
+    const hit = seen.get(m[1]);
+    if (hit) hit.logoUrl = m[2];
+  }
   return [...seen.values()];
 }
 
@@ -1556,20 +2069,31 @@ app.get('/api/stations/openfm/list', async (req, res) => {
   const force = req.query.refresh === '1';
   if (!force) {
     const cached = loadOpenfmCache();
-    if (cached) return res.json({ stations: cached, cached: true });
+    if (cached) {
+      // Cache sprzed dodania logoUrl (stacje bez ikon w openfm-cli nigdy by ich
+      // nie dostaly) - dociagnij raz swieza liste, zamiast czekac do wygasniecia TTL.
+      if (cached.some(s => !s.logoUrl) && !openfmLogoHealTried) {
+        openfmLogoHealTried = true;
+        try {
+          const fresh = await fetchOpenfmStations();
+          if (fresh.length >= 10) { saveOpenfmCache(fresh); return res.json({ stations: decorateOpenfmIcons(fresh), cached: false }); }
+        } catch { /* zostaje stary cache */ }
+      }
+      return res.json({ stations: decorateOpenfmIcons(cached), cached: true });
+    }
   }
   try {
     const stations = await fetchOpenfmStations();
     if (stations.length < 10) throw new Error('Podejrzanie mało stacji, coś poszło nie tak przy pobieraniu');
     saveOpenfmCache(stations);
-    res.json({ stations, cached: false });
+    res.json({ stations: decorateOpenfmIcons(stations), cached: false });
   } catch (e) {
     // Fallback: jeśli świeże pobranie padło, spróbuj oddać nawet przeterminowany cache
     // zamiast zostawić użytkownika z pustą listą.
     try {
       const raw = JSON.parse(fs.readFileSync(OPENFM_CACHE_PATH, 'utf8'));
       if (Array.isArray(raw.stations) && raw.stations.length) {
-        return res.json({ stations: raw.stations, cached: true, stale: true });
+        return res.json({ stations: decorateOpenfmIcons(raw.stations), cached: true, stale: true });
       }
     } catch {}
     res.status(502).json({ error: 'Nie udało się pobrać listy stacji open.fm', detail: e.message });
@@ -1912,9 +2436,13 @@ app.listen(PORT, '127.0.0.1', () => {
   const paths = getWatchedPaths();
   if (paths.length) {
     startWatcher(paths);
-    const count = db.prepare('SELECT COUNT(*) as n FROM songs').get().n;
-    if (count === 0) scanPaths(paths).catch(console.error);
+    // Zawsze synchronizujemy bibliotekę przy starcie. Nie wolno uzależniać
+    // pierwszego skanu od tego, czy baza jest pusta — inaczej nowy plik dodany
+    // do istniejącej biblioteki może pozostać niewidoczny.
+    scheduleLibraryScan('start aplikacji');
   }
+  // Ikony stacji open.fm w tle (toast we froncie pokazuje postęp)
+  downloadOpenfmIcons().catch(e => console.warn('[openfm-icons]', e.message));
 });
 
 module.exports = app;

@@ -4,6 +4,7 @@ import {
   Radio, Plus, Play, Square, Upload, Trash2, Pencil, EyeOff, Eye,
   X, Check, Loader2, AlertCircle, Search, Signal, ImageOff, Globe,
 } from 'lucide-react';
+import { getStationInitial, getStationPlaceholderStyle, stripEmoji } from '../../stationUtils';
 
 const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 'http:')
   ? '/api' : 'http://localhost:3001/api';
@@ -36,11 +37,11 @@ function OpenfmBrowser({ onClose, onAdd, existingSlugs, t }) {
     if (!stations) return [];
     if (!query.trim()) return stations;
     const q = query.toLowerCase();
-    return stations.filter(s => s.name.toLowerCase().includes(q) || s.slug.toLowerCase().includes(q));
+    return stations.filter(s => stripEmoji(s.name).toLowerCase().includes(q) || s.slug.toLowerCase().includes(q));
   }, [stations, query]);
 
   const handleAdd = async (station) => {
-    await onAdd(station);
+    await onAdd({ ...station, name: stripEmoji(station.name) });
     setAddedSlugs(prev => new Set(prev).add(station.slug));
   };
 
@@ -85,9 +86,12 @@ function OpenfmBrowser({ onClose, onAdd, existingSlugs, t }) {
                 const already = existingSlugs.has(s.slug) || addedSlugs.has(s.slug);
                 return (
                   <div key={s.slug} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.03] transition-colors">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{s.name}</p>
-                      <p className="text-[11px] text-zinc-600 truncate font-mono">{s.slug}</p>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <OpenfmStationIcon station={s} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{stripEmoji(s.name)}</p>
+                        <p className="text-[11px] text-zinc-600 truncate font-mono">{s.slug}</p>
+                      </div>
                     </div>
                     <button
                       onClick={() => !already && handleAdd(s)}
@@ -107,6 +111,25 @@ function OpenfmBrowser({ onClose, onAdd, existingSlugs, t }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Okrągła ikona stacji w przeglądarce open.fm. Favicon serwuje backend
+// (lokalny cache openfm-cli albo logoUrl z CDN open.fm); gdy ikona brakuje
+// albo nie doładowała się – pierwsza litera nazwy na kolorowym gradiencie.
+function OpenfmStationIcon({ station }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [station.favicon]);
+  const showImg = station.favicon && !failed;
+  return (
+    <div
+      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden shadow-inner"
+      style={!showImg ? getStationPlaceholderStyle(station) : undefined}
+    >
+      {showImg
+        ? <img src={station.favicon} alt="" className="w-full h-full object-cover" onError={() => setFailed(true)} />
+        : <span className="text-xs font-extrabold text-white drop-shadow">{getStationInitial(station.name)}</span>}
     </div>
   );
 }
@@ -229,9 +252,10 @@ function StationForm({ initial, onSubmit, onCancel, t }) {
   );
 }
 
-function StationRow({ station, isActive, isPlaying, isLoading, hasError, onToggle, onEdit, onDelete, onHide, onUnhide, t }) {
+function StationRow({ station, isActive, isPlaying, isLoading, hasError, onToggle, onEdit, onDelete, onHide, onUnhide, onVariantChange, t }) {
   const isHiddenList = station.isHidden;
   const [iconFailed, setIconFailed] = useState(false);
+  const hasVariants = station.source === 'manifest' && station.variants?.length > 0;
   return (
     <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all group ${
       isActive ? 'border-zinc-600 bg-white/[0.06]' : 'border-zinc-800/60 hover:border-zinc-700 hover:bg-white/[0.03]'
@@ -242,6 +266,7 @@ function StationRow({ station, isActive, isPlaying, isLoading, hasError, onToggl
         className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all overflow-hidden ${
           isActive ? 'accent-gradient' : (station.favicon && !iconFailed) ? 'bg-zinc-800' : 'bg-zinc-800 hover:bg-zinc-700'
         }`}
+        style={station.type === 'openfm' && !isActive && (!station.favicon || iconFailed) ? getStationPlaceholderStyle(station) : undefined}
       >
         {isActive && isLoading
           ? <Loader2 size={16} className="animate-spin text-white" />
@@ -249,12 +274,14 @@ function StationRow({ station, isActive, isPlaying, isLoading, hasError, onToggl
             ? <Square size={13} fill="white" className="text-white" />
             : station.favicon && !iconFailed
               ? <img src={station.favicon} alt="" className="w-full h-full object-cover" onError={() => setIconFailed(true)} />
-              : <Play size={15} fill="white" className="text-white ml-0.5" />}
+              : station.type === 'openfm'
+                ? <span className="text-sm font-extrabold text-white drop-shadow">{getStationInitial(station.name)}</span>
+                : <Play size={15} fill="white" className="text-white ml-0.5" />}
       </button>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="font-semibold text-sm truncate">{station.name}</p>
+          <p className="font-semibold text-sm truncate">{station.type === 'openfm' ? stripEmoji(station.name) : station.name}</p>
           {isActive && isPlaying && !hasError && (
             <span className="flex items-center gap-1 text-[10px] text-red-400 flex-shrink-0">
               <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
@@ -273,6 +300,22 @@ function StationRow({ station, isActive, isPlaying, isLoading, hasError, onToggl
             : station.genre || (station.source === 'manifest' ? t('predefined', { ns: 'radio' }) : t('custom', { ns: 'radio' }))}
         </p>
       </div>
+
+      {/* Wybór oddziału/wariantu (np. miasta) - tylko dla stacji z manifestu, które go mają */}
+      {hasVariants && (
+        <select
+          value={station.activeVariantId || ''}
+          onChange={e => onVariantChange(station, e.target.value || null)}
+          onClick={e => e.stopPropagation()}
+          title={t('selectVariant', { ns: 'radio' })}
+          className="flex-shrink-0 bg-zinc-800/80 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-zinc-300 focus:outline-none hover:border-zinc-500 cursor-pointer max-w-[110px]"
+        >
+          <option value="">{t('mainBranch', { ns: 'radio' })}</option>
+          {station.variants.map(v => (
+            <option key={v.id} value={v.id}>{v.label}</option>
+          ))}
+        </select>
+      )}
 
       {/* Akcje */}
       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
@@ -360,7 +403,7 @@ export default function RadioView({ stations, hiddenStations, radio, onRefresh }
     await fetch(`${API_URL}/stations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: openfmStation.name,
+        name: stripEmoji(openfmStation.name),
         url: `openfm:${openfmStation.slug}`, // placeholder - realny URL nigdy nie jest z niego czytany dla type:openfm
         slug: openfmStation.slug,
         type: 'openfm',
@@ -393,6 +436,23 @@ export default function RadioView({ stations, hiddenStations, radio, onRefresh }
   const handleUnhide = async (station) => {
     await fetch(`${API_URL}/stations/${station.id}/unhide`, { method: 'POST' });
     onRefresh();
+  };
+
+  // Zmiana oddziału/wariantu stacji (np. miasta dla rozszczepień regionalnych).
+  // Jeśli ta stacja akurat gra, restartujemy odtwarzanie ze świeżym URL-em -
+  // sam zapis wyboru w bazie nie wpłynie na już otwarty <audio> stream.
+  const handleVariantChange = async (station, variantId) => {
+    const wasPlaying = radio.currentStation?.id === station.id && radio.isPlaying;
+    if (wasPlaying) radio.stop({ silentTakeover: true });
+    await fetch(`${API_URL}/stations/${station.id}/variant`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variantId }),
+    });
+    await onRefresh();
+    if (wasPlaying) {
+      const variant = variantId ? station.variants.find(v => v.id === variantId) : null;
+      radio.play({ ...station, url: variant ? variant.url : station.url, activeVariantId: variantId });
+    }
   };
 
   const handleFile = async (file) => {
@@ -494,6 +554,7 @@ export default function RadioView({ stations, hiddenStations, radio, onRefresh }
               onDelete={handleDelete}
               onHide={handleHide}
               onUnhide={handleUnhide}
+              onVariantChange={handleVariantChange}
               t={t}
             />
           ))}
@@ -517,6 +578,7 @@ export default function RadioView({ stations, hiddenStations, radio, onRefresh }
                   isActive={false} isPlaying={false} isLoading={false} hasError={false}
                   onToggle={() => {}} onEdit={setEditing} onDelete={handleDelete}
                   onHide={handleHide} onUnhide={handleUnhide}
+                  onVariantChange={handleVariantChange}
                   t={t}
                 />
               ))}

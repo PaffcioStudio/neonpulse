@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Search, Heart, Disc, Music2, Mic2, Sparkles, Shuffle, Tag, ListPlus, Moon, X, Radio as RadioIcon } from 'lucide-react';
+import { Play, Search, Heart, Disc, Music2, Mic2, Sparkles, Shuffle, Tag, ListPlus, Moon, X, Loader2, CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react';
 
 import Sidebar          from './Sidebar';
 import PlayerBar        from './PlayerBar';
@@ -33,6 +33,7 @@ import {
 } from '../utils';
 
 import { ipcRenderer } from '../ipc';
+import { getStationInitial, getStationPlaceholderStyle, stripEmoji } from '../stationUtils';
 // W trybie dev Vite proxy przekierowuje /api → localhost:3001 (brak CORS)
 // W Electronie (production) React ładowany jest z file://, więc potrzeba pełnego URL
 const API_URL = (typeof window !== 'undefined' && window.location?.protocol === 'http:')
@@ -119,6 +120,7 @@ export default function MusicPlayer() {
   const [activeView,      setActiveViewRaw] = useState('home');
   const [isTransitioning, setTransitioning] = useState(false);
   const [toasts, setToasts] = useState([]);
+  const [iconDl, setIconDl] = useState(null); // postęp pobierania ikon OpenFM: { done, total } | null
   const [isSidebarOpen,   setSidebarOpen]   = useState(true);
   const [isNowPlaying,    setIsNowPlaying]  = useState(false);
   const [isQueueOpen,     setIsQueueOpen]   = useState(false);
@@ -195,6 +197,8 @@ export default function MusicPlayer() {
   // Czy aktualnie gra stacja radiowa (a nie plik lokalny) - używane m.in.
   // do przełączania panelu equalizera i paska odtwarzacza w tryb radiowy.
   const radioActiveNow = !!(radio.currentStation && radio.isPlaying);
+  const [radioFaviconFailed, setRadioFaviconFailed] = useState(false);
+  useEffect(() => { setRadioFaviconFailed(false); }, [radio.currentStation?.id, radio.currentStation?.slug, radio.currentStation?.favicon]);
 
   // ─── Last.fm scrobbling ─────────────────────────────────────
   const lastfm = useLastFm(player.currentSong, player.isPlaying, player.progress);
@@ -204,6 +208,38 @@ export default function MusicPlayer() {
     const id = Date.now();
     setToasts(prev => [...prev, { id, msg, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  }, []);
+
+  // ─── Ikony OpenFM: toast z postępem pobierania (widoczny do końca) ───
+  // Serwer pobiera komplet ikon przy starcie (w tle); tu tylko pollujemy status
+  // co 1 s i pokazujemy pasek. Przy kolejnych uruchomieniach (komplet w cache)
+  // status od razu complete -> toast się w ogóle nie pojawia.
+  useEffect(() => {
+    let cancelled = false;
+    let seenRunning = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${API_URL}/stations/openfm/icons/status`);
+        if (!r.ok) return;
+        const s = await r.json();
+        if (cancelled) return;
+        if (s.running) {
+          seenRunning = true;
+          setIconDl({ done: s.done || 0, total: s.total || 0 });
+        } else {
+          if (seenRunning) {
+            if (s.complete) showToast(t('iconsDownloaded', { ns: 'radio' }), 'success');
+            else if ((s.failed || []).length) showToast(t('iconsFailed', { ns: 'radio' }), 'warn');
+          }
+          setIconDl(null);
+          seenRunning = false;
+        }
+      } catch { /* serwer chwilowo nieosiągalny - nieistotne dla toastu */ }
+    };
+    poll();
+    const timer = setInterval(poll, 1000);
+    return () => { cancelled = true; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Refs
@@ -521,9 +557,10 @@ export default function MusicPlayer() {
   // ─── Wizualizator ────────────────────────────────────────────
   // Źródło danych: dla plików lokalnych prawdziwy AnalyserNode z usePlayer.
   // Dla radia celowo NIE podpinamy Web Audio API pod strumień (patrz
-  // useRadioPlayer.js - ryzyko wyciszenia audio, potwierdzone w praktyce).
-  // Wizualizator dla radia dostaje syntetyczny, oscylujący "puls" zamiast
-  // realnego widma - bezpieczne rozwiązanie kosztem wizualnej wierności.
+  // useRadioPlayer.js - ryzyko wyciszenia audio, potwierdzone w praktyce
+  // dwukrotnie na różnych podejściach). Wizualizator dla radia dostaje
+  // syntetyczny, oscylujący "puls" zamiast realnego widma - bezpieczne
+  // rozwiązanie kosztem wizualnej wierności.
   useEffect(() => {
     cancelAnimationFrame(animFrameRef.current);
     const visualizerAsBackdrop = activeView !== 'home' && settings.showAlbumColors && settings.showVisualizerBackdrop;
@@ -1243,16 +1280,22 @@ export default function MusicPlayer() {
                     <div className="flex flex-col md:flex-row items-center md:items-end gap-10 w-full justify-center">
                       {/* Cover / favicon stacji */}
                       <div className="relative group flex-shrink-0">
-                        <div className="relative w-64 h-64 md:w-80 md:h-80 rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-zinc-900 flex items-center justify-center">
-                          {radio.currentStation.favicon ? (
+                        <div
+                          className="relative w-64 h-64 md:w-80 md:h-80 rounded-2xl shadow-2xl border border-white/5 overflow-hidden bg-zinc-900 flex items-center justify-center"
+                          style={!radio.currentStation.favicon || radioFaviconFailed ? getStationPlaceholderStyle(radio.currentStation) : undefined}
+                        >
+                          {radio.currentStation.favicon && !radioFaviconFailed ? (
                             <img
                               src={radio.currentStation.favicon}
                               className="w-full h-full object-cover"
                               alt={radio.currentStation.name}
-                              onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                              onError={() => setRadioFaviconFailed(true)}
                             />
-                          ) : null}
-                          <RadioIcon size={72} className="text-emerald-500/40" style={{ display: radio.currentStation.favicon ? 'none' : 'flex' }} />
+                          ) : (
+                            <span className="text-8xl md:text-9xl font-black text-white/95 drop-shadow-2xl select-none">
+                              {getStationInitial(radio.currentStation.name)}
+                            </span>
+                          )}
                         </div>
                         {/* Live indicator */}
                         <div className="absolute bottom-3 right-3 flex gap-0.5 items-end">
@@ -1268,7 +1311,7 @@ export default function MusicPlayer() {
                         <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20 text-xs font-semibold text-emerald-400 mb-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" /> {t('liveNow', { ns: 'radio' })}
                         </div>
-                        <h1 className="text-4xl md:text-6xl font-black leading-none tracking-tight">{radio.currentStation.name}</h1>
+                        <h1 className="text-4xl md:text-6xl font-black leading-none tracking-tight">{radio.currentStation.type === 'openfm' ? stripEmoji(radio.currentStation.name) : radio.currentStation.name}</h1>
                         {radio.nowPlaying?.title ? (
                           <h2 className="text-xl md:text-3xl text-zinc-300 font-bold">
                             {radio.nowPlaying.artist ? `${radio.nowPlaying.artist} — ${radio.nowPlaying.title}` : radio.nowPlaying.title}
@@ -1729,19 +1772,47 @@ export default function MusicPlayer() {
             isClosing={closingOverlay === 'queue'} />
         )}
 
-        {/* Toast notifications */}
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-[200] pointer-events-none">
-          {toasts.map(t => (
-            <div key={t.id} className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-2xl border animate-in slide-in-from-bottom-2 fade-in duration-200 ${
-              t.type === 'error'   ? 'bg-red-950/95 border-red-800 text-red-200' :
-              t.type === 'warn'    ? 'bg-yellow-950/95 border-yellow-800 text-yellow-200' :
-              t.type === 'success' ? 'bg-green-950/95 border-green-800 text-green-200' :
-              t.type === 'info'    ? 'bg-blue-950/95 border-blue-800 text-blue-200' :
-                                     'bg-zinc-900/95 border-zinc-700 text-zinc-200'
-            }`}>
-              {t.msg}
+        {/* Toasty w prawym górnym rogu — poza paskiem odtwarzacza i głównymi kontrolkami. */}
+        <div className="fixed top-4 right-4 w-[min(380px,calc(100vw-2rem))] flex flex-col gap-3 z-[200] pointer-events-none">
+          {iconDl && iconDl.total > 0 && (
+            <div className="rounded-2xl border border-sky-400/20 bg-zinc-950/90 p-4 text-zinc-100 shadow-[0_18px_60px_rgba(0,0,0,0.5)] backdrop-blur-2xl animate-in slide-in-from-top-2 fade-in duration-200">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-sky-400/15 bg-sky-400/10 text-sky-300">
+                  <Loader2 size={18} className="animate-spin" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Open.fm</p>
+                  <p className="truncate text-sm font-semibold">{t('iconsDownloading', { ns: 'radio' })}</p>
+                </div>
+                <span className="font-mono text-xs tabular-nums text-zinc-400">{iconDl.done} / {iconDl.total}</span>
+              </div>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-sky-400 via-indigo-400 to-fuchsia-400 transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.round((iconDl.done / iconDl.total) * 100))}%` }}
+                />
+              </div>
             </div>
-          ))}
+          )}
+          {toasts.map(toast => {
+            const styles = {
+              error: { Icon: XCircle, icon: 'text-rose-300 bg-rose-400/10 border-rose-400/15', accent: 'border-rose-400/20' },
+              warn: { Icon: AlertTriangle, icon: 'text-amber-300 bg-amber-400/10 border-amber-400/15', accent: 'border-amber-400/20' },
+              success: { Icon: CheckCircle2, icon: 'text-emerald-300 bg-emerald-400/10 border-emerald-400/15', accent: 'border-emerald-400/20' },
+              info: { Icon: Info, icon: 'text-sky-300 bg-sky-400/10 border-sky-400/15', accent: 'border-sky-400/20' },
+              default: { Icon: Info, icon: 'text-zinc-300 bg-white/[0.06] border-white/10', accent: 'border-white/10' },
+            };
+            const style = styles[toast.type] || styles.default;
+            const ToastIcon = style.Icon;
+            return (
+              <div key={toast.id} className={`flex items-center gap-3 rounded-2xl border ${style.accent} bg-zinc-950/90 p-3.5 text-sm text-zinc-100 shadow-[0_18px_60px_rgba(0,0,0,0.5)] backdrop-blur-2xl animate-in slide-in-from-top-2 fade-in duration-200`}>
+                <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border ${style.icon}`}>
+                  <ToastIcon size={17} />
+                </div>
+                <p className="min-w-0 flex-1 font-medium leading-snug">{toast.msg}</p>
+              </div>
+            );
+          })}
         </div>
 
         <PlayerBar

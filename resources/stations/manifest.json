@@ -1,5 +1,5 @@
 {
-  "//": "Manifest predefiniowanych stacji radiowych NeonPulse. Ten plik trafia do paczki deb/AppImage (poza asar, w resources/stations/manifest.json) i może być edytowany po instalacji bez rebuildu. Użytkownik może ukryć dowolną stację z poziomu aplikacji - ukrycia zapisywane są osobno i nie modyfikują tego pliku. Adresy to bezpośrednie strumienie audio (nie playlisty .pls/.m3u), zweryfikowane pod kątem najpopularniejszych ogólnopolskich stacji FM (2026).",
+  "//": "Manifest predefiniowanych stacji radiowych NeonPulse. Ten plik trafia do paczki deb/AppImage (poza asar, w resources/stations/manifest.json) i może być edytowany po instalacji bez rebuildu. Użytkownik może ukryć dowolną stację z poziomu aplikacji - ukrycia zapisywane są osobno i nie modyfikują tego pliku. Adresy to bezpośrednie strumienie audio (nie playlisty .pls/.m3u), zweryfikowane pod kątem najpopularniejszych ogólnopolskich stacji FM (2026). Stacje mogą mieć opcjonalne pole 'variants' - alternatywne oddziały/mirrory tego samego programu (np. rozszczepienia regionalne). Wybór wariantu przez użytkownika zapisywany jest osobno w stations.json (manifestVariantSelections), ten plik nie jest przez appkę modyfikowany.",
   "version": 2,
   "stations": [
     {
@@ -32,7 +32,7 @@
       "url": "http://ic1.smcdn.pl/2380-1.mp3",
       "genre": "Pop/Hity",
       "type": "icecast",
-      "favicon": ""
+      "favicon": "https://static.mytuner.mobi/media/tvos_radios/938/radio-eska.5fe77e51.jpg"
     },
     {
       "id": "eska-rock",
@@ -40,7 +40,7 @@
       "url": "http://ic1.smcdn.pl/5380-1.mp3",
       "genre": "Rock",
       "type": "icecast",
-      "favicon": ""
+      "favicon": "https://openfm-upload-api.wpcdn.pl/2146e669-c1c1-42e7-9e2c-8bcf858c7e2e.jpg"
     },
     {
       "id": "antyradio",
@@ -56,7 +56,18 @@
       "url": "https://ch01.cdn.eurozet.pl/chi-net.mp3",
       "genre": "Chillout/Pop",
       "type": "icecast",
-      "favicon": ""
+      "favicon": "https://static.mytuner.mobi/media/tvos_radios/888/zet-chilli.9bfde6ae.jpg"
+    },
+    {
+      "id": "zlote-przeboje",
+      "name": "Radio Złote Przeboje",
+      "url": "http://poznan7.radio.pionier.net.pl:8000/tuba9-1.mp3",
+      "genre": "Muzyka lat 60-80",
+      "type": "icecast",
+      "favicon": "https://covers.tuba.pl/gstation_covers_2/_img/zlote-przeboje.png",
+      "variants": [
+        { "id": "poznan", "label": "Poznań", "url": "http://poznan7.radio.pionier.net.pl:8000/tuba9-1.mp3" }
+      ]
     }
   ]
 }
