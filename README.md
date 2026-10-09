@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="screenshots/banner.jpg" width="100%" alt="NeonPulse Player - baner" />
+<img src="screenshots/banner.jpg" width="100%" alt="NeonPulse Player banner" />
 
 <br/>
 
@@ -8,108 +8,108 @@
 
 # NeonPulse Player
 
-**Lokalny odtwarzacz muzyki dla Linuksa, z biblioteką SQLite, MPRIS i nowoczesnym UI.**
+**A modern local music player for Linux, featuring an SQLite library, MPRIS integration, and a polished user interface.**
 
-[![Wersja](https://img.shields.io/badge/wersja-3.6.2-a855f7?style=for-the-badge)](package.json)
-[![Linux](https://img.shields.io/badge/Linux-DEB%20%7C%20AppImage-2563eb?style=for-the-badge&logo=linux&logoColor=white)](#instalacja)
+[![Version](https://img.shields.io/badge/version-3.6.2-a855f7?style=for-the-badge)](package.json)
+[![Linux](https://img.shields.io/badge/Linux-DEB%20%7C%20AppImage-2563eb?style=for-the-badge&logo=linux&logoColor=white)](#installation)
 [![Electron](https://img.shields.io/badge/Electron-28-47848f?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18-61dafb?style=for-the-badge&logo=react&logoColor=111)](https://react.dev)
-[![SQLite](https://img.shields.io/badge/SQLite-biblioteka-003b57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org)
+[![SQLite](https://img.shields.io/badge/SQLite-library-003b57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org)
 
 </div>
 
 ---
 
-## Zrzuty Ekranu
+## Screenshots
 
 <div align="center">
 
-<img src="screenshots/1.png" width="49%" alt="Ekran Teraz gramy" />
-<img src="screenshots/2.png" width="49%" alt="Biblioteka muzyki" />
+<img src="screenshots/1.png" width="49%" alt="Now Playing view" />
+<img src="screenshots/2.png" width="49%" alt="Music library" />
 
-<img src="screenshots/3.png" width="49%" alt="Widok odtwarzacza systemowego" />
-<img src="screenshots/4.png" width="49%" alt="Ustawienia aplikacji" />
+<img src="screenshots/3.png" width="49%" alt="System media player integration" />
+<img src="screenshots/4.png" width="49%" alt="Application settings" />
 
 </div>
 
 ---
 
-## Najważniejsze Funkcje
+## Key Features
 
-| Obszar | Co potrafi |
+| Area | Features |
 | --- | --- |
-| Odtwarzanie | MP3, FLAC, OGG, WAV, AAC i inne formaty wspierane przez Chromium |
-| Kolejka | Kolejka i aktywny utwór są zapisywane między sesjami |
-| Przejścia | Gapless playback albo crossfade, z automatycznym wykluczaniem konfliktu |
-| Dźwięk | 10-pasmowy equalizer, szybki panel EQ, ReplayGain i fade-in |
-| System Linux | MPRIS v2, klawisze multimedialne, panel KDE/GNOME i tray |
-| Biblioteka | SQLite, live scan folderów, wyszukiwanie, sortowanie i widoki szczegółowe |
-| Metadane | Edycja tagów, zbiorcza edycja, oceny, okładki z MusicBrainz / Cover Art Archive |
-| Playlisty | Playlisty lokalne, smart playlisty, import M3U/PLS/XSPF i eksport M3U |
-| Radio internetowe | Stacje Icecast/Shoutcast, własne stacje, import z M3U/M3U8/XML, manifest predefiniowanych stacji, warianty regionalne, open.fm (wsparcie nieoficjalne) |
-| Teksty | Pliki `.lrc`, teksty embedded i synchronizacja z postępem utworu |
-| Last.fm | Scrobbling, now playing i przełącznik integracji w ustawieniach |
+| Playback | MP3, FLAC, OGG, WAV, AAC, and other formats supported by Chromium |
+| Queue | The playback queue and current track are saved between sessions |
+| Transitions | Gapless playback or crossfade, with automatic conflict prevention |
+| Audio | 10-band equalizer, quick EQ panel, ReplayGain, and fade-in |
+| Linux integration | MPRIS v2, multimedia keys, KDE/GNOME media controls, and system tray |
+| Library | SQLite, live folder scanning, search, sorting, and detailed views |
+| Metadata | Tag editing, bulk editing, ratings, and artwork from MusicBrainz / Cover Art Archive |
+| Playlists | Local and smart playlists, M3U/PLS/XSPF import, and M3U export |
+| Internet radio | Icecast/Shoutcast stations, custom stations, M3U/M3U8/XML import, preset station manifest, regional variants, and unofficial open.fm support |
+| Lyrics | `.lrc` files, embedded lyrics, and synchronization with track progress |
+| Last.fm | Scrobbling, now-playing updates, and an integration toggle in settings |
 
 ---
 
-## Interfejs
+## Interface
 
-- Widoki: `Teraz gramy`, `Wszystkie utwory`, `Ulubione`, artyści, albumy, gatunki, dekady, playlisty, statystyki, tekst utworu, duplikaty i brakujące pliki.
-- Dolny pasek odtwarzacza z okładką, tytułem, artystą, kolejką, wyłącznikiem czasowym i opcjonalnymi skrótami.
-- Kliknięcie okładki przechodzi do `Teraz gramy`, tytułu do albumu, a artysty do jego albumów.
-- Motywy kolorystyczne, ambient z okładki albumu, animacje przejść i tryb kompaktowy list.
-- Wizualizacje audio: `Mgławica`, `Słupy`, `Tunel` i `Zorza`, z opcjonalnym delikatnym prześwitem w tle widoków.
-- Pełnoekranowy widok odtwarzania z okładką, tekstem i kolejką.
-
----
-
-## Radio Internetowe
-
-- Osobna zakładka `Stacje radiowe` w pasku bocznym, niezależna od biblioteki lokalnej plików.
-- Manifest predefiniowanych stacji (`resources/stations/manifest.json`), edytowalny bez rebuildu aplikacji — poza `.deb`/`AppImage` (`resources/stations/`), więc łatwo dopisać własne stacje po instalacji.
-- Dodawanie własnych stacji ręcznie (nazwa, URL, gatunek, ikonka) oraz import z plików M3U, M3U8 i XML.
-- Automatyczne dociąganie ikonek stacji z [Radio-Browser](https://www.radio-browser.info/) dla tych, które nie mają jej ustawionej w manifeście, plus ręczne wyszukiwanie ikonki po nazwie z podglądem wyników.
-- Warianty regionalne dla stacji sieciowych z rozszczepieniami (np. inne miasto/oddział tej samej rozgłośni) — wybór zapamiętywany trwale per stacja.
-- **Wsparcie dla [open.fm](https://open.fm) (nieoficjalne)** — przeglądanie i dodawanie dowolnej stacji z katalogu open.fm, odtwarzanej przez HLS (`hls.js`). Ponieważ open.fm nie udostępnia publicznego API, integracja korzysta z tego samego mechanizmu podpisanych, wygasających adresów strumienia co strona open.fm — token jest pobierany na nowo przy każdym odtworzeniu. Może przestać działać bez zapowiedzi, jeśli open.fm zmieni swój mechanizm autoryzacji.
-- Equalizer i wizualizacja audio są wyłączone dla radia internetowego — większość publicznych strumieni nie wysyła nagłówków CORS wymaganych do bezpiecznego przetwarzania dźwięku w przeglądarce; próba ich obejścia realnie ryzykowała wyciszeniem strumienia, więc priorytet ma zawsze działający dźwięk.
-- MPRIS i tray pokazują aktualnie graną stację (nazwa, ikonka, gatunek) tak samo jak dla utworów z biblioteki.
+- Views include `Now Playing`, `All Tracks`, `Favorites`, artists, albums, genres, decades, playlists, statistics, lyrics, duplicates, and missing files.
+- Bottom playback bar with artwork, title, artist, queue, sleep timer, and optional shortcuts.
+- Click artwork to open `Now Playing`, the title to open its album, or the artist to browse their albums.
+- Color themes, album-art ambient backgrounds, transition animations, and compact list mode.
+- Audio visualizations: `Nebula`, `Bars`, `Tunnel`, and `Aurora`, with an optional subtle background effect behind views.
+- Full-screen playback view with artwork, lyrics, and the queue.
 
 ---
 
-## Ustawienia I Automatyzacja
+## Internet Radio
 
-- Automatyczne przywracanie ostatniego utworu, pozycji i kolejki.
-- Start zminimalizowany do traya, minimalizacja do traya i kontrolki w menu traya.
-- Konfigurowalne przyciski paska odtwarzacza: widok odtwarzania, equalizer i wyłącznik czasowy.
-- Wyłącznik czasowy z presetami i własnym limitem minut.
-- Aktualizacje sprawdzane z GitHub Releases.
-- Przeciąganie folderów do okna aplikacji dodaje je do biblioteki.
+- A dedicated `Radio Stations` tab in the sidebar, separate from the local music library.
+- Preset stations are defined in `resources/stations/manifest.json`. The manifest can be edited without rebuilding the app, except when stations are bundled into `.deb` or `AppImage` packages; `resources/stations/` can be edited directly in a source installation.
+- Add custom stations manually (name, URL, genre, and icon), or import them from M3U, M3U8, and XML files.
+- Automatically fetch station icons from [Radio-Browser](https://www.radio-browser.info/) when a station has no icon configured in the manifest. You can also search for an icon by station name and preview the results.
+- Regional variants are supported for networks that split their broadcasts by city or branch. The selected variant is remembered for each station.
+- **Unofficial [open.fm](https://open.fm) support** — browse and add stations from the open.fm catalogue and play them over HLS using `hls.js`. Since open.fm does not provide a public API, this integration uses the same kind of signed, expiring stream URLs as the open.fm website. A fresh token is retrieved whenever playback starts. The integration may stop working without notice if open.fm changes its authorization mechanism.
+- The equalizer and audio visualizer are disabled for internet radio. Most public streams do not send the CORS headers needed for safe audio processing in the browser; attempting to work around this could mute playback, so reliable audio takes priority.
+- MPRIS and the system tray show the currently playing station, including its name, icon, and genre, just as they do for tracks in the local library.
 
 ---
 
-## Skróty Klawiszowe
+## Settings and Automation
 
-| Skrót | Akcja |
+- Automatically restore the last track, playback position, and queue.
+- Start minimized to the system tray, minimize to tray, and use tray-menu controls.
+- Configure playback-bar shortcuts for the playback view, equalizer, and sleep timer.
+- Sleep timer with presets and a custom duration.
+- Check for updates through GitHub Releases.
+- Drag folders into the application window to add them to the library.
+
+---
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
 | --- | --- |
-| `Space` | Play / pauza |
-| `←` / `→` | Poprzedni / następny utwór |
-| `Shift+←` / `Shift+→` | Cofnij / przewiń o 10 sekund |
-| `↑` / `↓` | Głośność w górę / w dół |
-| `M` | Wycisz / odcisz |
+| `Space` | Play / pause |
+| `←` / `→` | Previous / next track |
+| `Shift+←` / `Shift+→` | Seek backward / forward by 10 seconds |
+| `↑` / `↓` | Increase / decrease volume |
+| `M` | Mute / unmute |
 | `S` | Shuffle |
-| `Ctrl+F` | Szukaj |
+| `Ctrl+F` | Search |
 
 ---
 
-## Instalacja
+## Installation
 
-### Wymagania Deweloperskie
+### Development Requirements
 
 - Linux
 - Node.js 18+
 - npm 9+
 
-### Uruchomienie Z Kodu
+### Run from Source
 
 ```bash
 git clone https://github.com/PaffcioStudio/neonpulse.git
@@ -118,7 +118,7 @@ npm install
 npm start
 ```
 
-`npm start` uruchamia Vite oraz aplikację Electron. Backend Express działa na porcie `3001`, a Vite na `5173`.
+`npm start` launches Vite and the Electron application. The Express backend runs on port `3001`, and Vite runs on port `5173`.
 
 ### Build
 
@@ -127,50 +127,50 @@ npm run build
 npm run dist
 ```
 
-`npm run build` tworzy frontend w katalogu `dist/`.
-`npm run dist` buduje paczki `.deb` i `AppImage` w katalogu `release/`.
+`npm run build` builds the frontend into `dist/`.
+`npm run dist` creates `.deb` and `AppImage` packages in `release/`.
 
 ---
 
-## Struktura Projektu
+## Project Structure
 
 ```text
 neonpulse/
-├── electron-main.js          # Electron, tray, MPRIS, okno aplikacji
-├── server.js                 # Express API, SQLite, skanowanie i integracje
+├── electron-main.js          # Electron, system tray, MPRIS, application window
+├── server.js                 # Express API, SQLite, scanning, and integrations
 ├── src/
-│   ├── components/           # Komponenty React
-│   ├── components/views/     # Widoki aplikacji
-│   ├── hooks/                # Logika odtwarzacza i Last.fm
-│   ├── ipc.js                # Bezpieczny most IPC
-│   └── utils.js              # Pomocnicze funkcje UI i biblioteki
-├── resources/                # Ikony, metadane linuksowe, manifest stacji radiowych
-├── screenshots/              # Zrzuty ekranu do README
-└── scripts/                  # Instalacja i hooki paczek
+│   ├── components/           # React components
+│   ├── components/views/     # Application views
+│   ├── hooks/                # Player and Last.fm logic
+│   ├── ipc.js                # Secure IPC bridge
+│   └── utils.js              # UI and library utility functions
+├── resources/                # Icons, Linux metadata, and radio station manifests
+├── screenshots/              # README screenshots
+└── scripts/                  # Packaging scripts and hooks
 ```
 
 ---
 
-## Stack
+## Tech Stack
 
-| Technologia | Rola |
+| Technology | Role |
 | --- | --- |
-| Electron 28 | Aplikacja desktopowa |
-| React 18 | Interfejs |
+| Electron 28 | Desktop application |
+| React 18 | User interface |
 | Vite 4 | Bundler |
-| Tailwind CSS | Style |
-| Express | Lokalne REST API |
-| SQLite / better-sqlite3 | Biblioteka, playlisty i statystyki |
-| music-metadata | Odczyt tagów audio |
-| node-id3 | Zapis tagów MP3 |
-| chokidar | Live scan folderów |
-| Web Audio API | Equalizer i wizualizacje |
-| MPRIS D-Bus | Integracja z systemem Linux |
+| Tailwind CSS | Styling |
+| Express | Local REST API |
+| SQLite / better-sqlite3 | Library, playlists, and statistics |
+| music-metadata | Audio tag reading |
+| node-id3 | MP3 tag writing |
+| chokidar | Live folder scanning |
+| Web Audio API | Equalizer and visualizations |
+| MPRIS D-Bus | Linux desktop integration |
 | Last.fm API | Scrobbling |
-| Lucide React | Ikony |
+| Lucide React | Icons |
 
 ---
 
-## Licencja
+## License
 
 MIT © Paffcio 2026
