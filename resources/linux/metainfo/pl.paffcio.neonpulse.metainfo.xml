@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>pl.paffcio.neonpulse</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
+  <project_license>LicenseRef-NeonPulse-Anti-AI</project_license>
   <name>NeonPulse Player</name>
   <summary>Lokalny odtwarzacz muzyki z klimatem neonów</summary>
   <developer_name>Paffcio</developer_name>
@@ -14,6 +14,7 @@
   <url type="homepage">https://github.com/PaffcioStudio/neonpulse</url>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="3.6.3" date="2026-10-19"/>
     <release version="3.6.0" date="2026-05-01"/>
     <release version="3.5.0" date="2026-04-01"/>
     <release version="3.4.0" date="2025-01-01"/>

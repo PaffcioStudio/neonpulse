@@ -1,21 +1,108 @@
-MIT License
+# NeonPulse Anti-AI License
 
-Copyright (c) 2026 PaffcioStudio
+Copyright (c) 2026 PaffcioStudio.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+License identifier: LicenseRef-NeonPulse-Anti-AI
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+This is a custom license. It is not the GNU General Public License and must
+not be represented as standard GNU GPLv3 or as an OSI-approved open-source
+license.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+## 1. Scope
+
+“Software” means the original NeonPulse source code, documentation, and other
+materials supplied by PaffcioStudio under this license. “Copyright Holder”
+means PaffcioStudio. “You” means anyone exercising permissions under this
+license. Third-party components retain their own licenses; this license grants
+no rights beyond those granted by their respective owners.
+
+## 2. Permissions
+
+Subject to all conditions below, you may use, run, study, copy, modify, and
+redistribute the Software, including commercially, in source or binary form.
+
+## 3. AI and Scraping Restrictions
+
+### No AI Training
+
+You may not use the Software, its source code, or its documentation to train,
+test, evaluate, or fine-tune artificial intelligence models, machine learning
+algorithms, neural networks, or large language models.
+
+### No AI-Related Scraping
+
+You may not use automated bots, scrapers, spiders, or data mining tools to
+extract, ingest, or index the Software into datasets, databases, or retrieval
+systems used for AI generation, model training, code completion, or similar
+technologies.
+
+### Restrictions on AI-Assisted Derivatives
+
+You may not submit the original Software, its source code, or its documentation
+to AI prompts, code generators, or AI services to create modified versions or
+other derivative works. Any permitted modified version remains subject to the
+source-sharing and redistribution requirements below.
+
+### Explicit Authorization by the Copyright Holder
+
+The Copyright Holder may explicitly authorize a person, tool, or service to
+perform otherwise restricted activities, including AI-assisted development,
+review, maintenance, and documentation work on the Copyright Holder’s behalf.
+Authorization may be given in writing, including a direct project instruction
+or conversation message, and applies only to the activities and scope expressly
+authorized. Authorization to assist with the project does not by itself permit
+model training, fine-tuning, unrelated scraping, or use for other projects.
+It does not grant the same exception to anyone else.
+
+## 4. Notices and Attribution
+
+Every redistributed copy must include this complete license and preserve
+existing copyright, attribution, and warranty notices. Modified versions must
+clearly identify that they have been modified and describe the changes made.
+
+## 5. Source Sharing and Redistribution
+
+If you distribute the Software or a modified or derivative version in source
+or binary form, you must:
+
+1. License the Software and your modifications under this same license,
+   including the restrictions in Section 3.
+2. Provide recipients with the complete corresponding source code for the
+   distributed version, including your modifications and the scripts needed
+   to build and install it. Supply the source alongside the distribution or
+   provide a working download link at no additional charge when distributing it.
+3. Preserve recipients’ permissions under this license without imposing
+   additional restrictions on the covered Software.
+
+Independent works distributed alongside the Software are not subject to this
+license solely because they are distributed together. Third-party components
+remain subject to their own license terms.
+
+## 6. Termination
+
+Any violation of this license, including the AI and scraping restrictions,
+automatically terminates the permissions granted to you under this license.
+Permissions may be reinstated by explicit written authorization from the
+Copyright Holder. Termination does not revoke the rights of recipients who
+remain in compliance with this license.
+
+## 7. No Warranty
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT, TO THE EXTENT
+PERMITTED BY APPLICABLE LAW.
+
+## 8. Limitation of Liability
+
+TO THE EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDER AND
+CONTRIBUTORS SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR ITS USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## 9. Reserved Rights
+
+All rights not expressly granted by this license are reserved. Nothing in
+this license limits rights that applicable law grants independently of
+this license. No permission to use the Copyright Holder’s trademarks or
+to imply endorsement is granted.

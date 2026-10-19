@@ -10,7 +10,7 @@
 
 **A modern local music player for Linux, featuring an SQLite library, MPRIS integration, and a polished user interface.**
 
-[![Version](https://img.shields.io/badge/version-3.6.2-a855f7?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/version-3.6.3-a855f7?style=for-the-badge)](package.json)
 [![Linux](https://img.shields.io/badge/Linux-DEB%20%7C%20AppImage-2563eb?style=for-the-badge&logo=linux&logoColor=white)](#installation)
 [![Electron](https://img.shields.io/badge/Electron-28-47848f?style=for-the-badge&logo=electron&logoColor=white)](https://electronjs.org)
 [![React](https://img.shields.io/badge/React-18-61dafb?style=for-the-badge&logo=react&logoColor=111)](https://react.dev)
@@ -173,4 +173,10 @@ neonpulse/
 
 ## License
 
-MIT © Paffcio 2026
+[NeonPulse Anti-AI License](LICENSE) © PaffcioStudio 2026.
+
+This project uses a custom license with source-sharing requirements and restrictions
+on AI training, AI-related scraping, and submitting the original source code to AI
+tools. The copyright holder may explicitly authorize these activities for work on
+the project. See [LICENSE](LICENSE) for the complete terms. This is not the
+standard GNU GPLv3 license.

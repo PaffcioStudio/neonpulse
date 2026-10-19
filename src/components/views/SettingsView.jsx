@@ -9,6 +9,7 @@ import {
 import { THEMES } from '../../utils';
 import EqualizerPanel from '../EqualizerPanel';
 import { ipcRenderer } from '../../ipc';
+import licenseText from '../../../LICENSE?raw';
 
 function formatBytes(bytes) {
   const n = Number(bytes) || 0;
@@ -574,6 +575,16 @@ export default function SettingsView({ musicPaths, library, scanInfo, onAddFolde
                   }
                 </div>
               )}
+            </div>
+          </Card>
+
+          <Card title={t('license', { ns: 'common' })} subtitle="NeonPulse Anti-AI License">
+            <div className="py-2 space-y-3 text-xs text-zinc-400">
+              <p>{t('licenseDescription', { ns: 'settings' })}</p>
+              <details>
+                <summary className="cursor-pointer accent-text">{t('licenseFullText', { ns: 'settings' })}</summary>
+                <pre className="mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-zinc-950/60 p-3 font-mono text-xs leading-relaxed text-zinc-400">{licenseText}</pre>
+              </details>
             </div>
           </Card>
 

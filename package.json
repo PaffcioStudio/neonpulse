@@ -1,6 +1,7 @@
 {
   "name": "neonpulse-player",
-  "version": "3.6.2",
+  "version": "3.6.3",
+  "license": "SEE LICENSE IN LICENSE",
   "productName": "NeonPulse",
   "desktopName": "pl.paffcio.neonpulse.desktop",
   "description": "NeonPulse – lokalny odtwarzacz audio z SQLite, smart playlistami i integracją z Linux",
@@ -67,6 +68,7 @@
       "server.js",
       "electron-main.js",
       "package.json",
+      "LICENSE",
       "build/icons/**",
       "node_modules/**"
     ],
@@ -129,6 +131,10 @@
       "artifactName": "NeonPulse.AppImage"
     },
     "extraResources": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
       {
         "from": "resources/icons",
         "to": "icons"
