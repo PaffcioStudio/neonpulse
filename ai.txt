@@ -1,0 +1,22 @@
+# ai.txt - Machine-Readable TDM and AI Training Opt-Out
+# License: LicenseRef-NeonPulse-Anti-AI
+# Copyright (c) 2026 Paffcio (PaffcioStudio)
+
+User-agent: *
+Disallow: /
+Disallow: *.js
+Disallow: *.ts
+Disallow: *.jsx
+Disallow: *.tsx
+Disallow: *.py
+Disallow: *.cpp
+Disallow: *.hpp
+Disallow: *.c
+Disallow: *.h
+Disallow: *.cs
+Disallow: *.sh
+Disallow: *.json
+Disallow: *.html
+Disallow: *.css
+Disallow: *.md
+Disallow: *.txt
